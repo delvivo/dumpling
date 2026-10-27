@@ -11,6 +11,9 @@ colors:
   chili-red: "#b91c1c"
   scallion-green: "#15803d"
   mustard: "#a16207"
+  chili-red-night: "#f87171"
+  scallion-green-night: "#4ade80"
+  mustard-night: "#facc15"
   night-steam: "#f5f5f4"
   night-grey: "#a8a29e"
   night-line: "#44403c"
@@ -137,7 +140,7 @@ Warm stone neutrals with one amber accent and three semantic outcome colors.
 - **Scallion Green** (`scallion-green`): success/ok status.
 - **Mustard** (`mustard`): warnings and skipped status; warning banners use it at 10% as a tint (`color-mix`).
 
-Semantic colors are not redefined for dark mode.
+In dark mode each semantic color brightens (`chili-red-night`, `scallion-green-night`, `mustard-night`) to stay above 4.5:1 on the night trays. Text on filled buttons follows `--on-fill`: white in light mode, Soy Ink in dark mode. The root declares `color-scheme: light dark` so native controls follow the theme.
 
 ### Named Rules
 **The One Warm Note Rule.** Amber is the only accent. It marks the primary action, the current location and work in progress; it never decorates.
@@ -186,11 +189,11 @@ Restrained: plain bordered controls, with color reserved for intent.
 ### Buttons
 - **Shape:** gently rounded (6px), 1px Basket Line border, inherits body font.
 - **Default:** Wrapper White fill, Soy Ink text.
-- **Primary:** Fried-Wrapper Amber fill and border, white text. One per form or dialog.
-- **Danger:** Chili Red fill and border, white text; for destructive confirmation.
+- **Primary:** Fried-Wrapper Amber fill and border, `--on-fill` text (white light, Soy Ink dark). One per form or dialog.
+- **Danger:** Chili Red fill and border, `--on-fill` text; for destructive confirmation.
 - **Link:** borderless, amber text, no padding; used for inline actions like Log out.
 - **Disabled:** 50% opacity, `not-allowed` cursor.
-- **Hover / Focus:** no custom states; browser defaults apply. Known gap: white text on the dark-mode amber (#f59e0b) is low contrast.
+- **Hover / Focus:** no custom states; browser defaults apply.
 
 ### Status Pills
 - **Style:** outline only (1px currentColor border, no fill), fully rounded, 0.8rem, nowrap.

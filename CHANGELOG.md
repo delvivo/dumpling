@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Dialogs (Backup now, Restore, Unlock) open as real modals: centered with backdrop instead of below
   the table, Esc closes, focus moves inside and returns to the opener.
+- Dark mode: error/success/warning colors and text on primary/danger buttons now meet WCAG AA
+  contrast; native controls (checkboxes, selects, scrollbars) follow the dark theme.
 - Encryption passphrases (on-demand backup, plan) must be typed twice; mismatch blocks submit.
 - Backup now keeps the dialog and its input open on error; Backup now and Save plan can't be
   double-submitted.

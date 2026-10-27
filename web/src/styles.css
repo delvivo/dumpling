@@ -1,11 +1,13 @@
 :root {
   --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4; --card: #fff;
-  --accent: #b45309; --danger: #b91c1c; --ok: #15803d; --warn: #a16207;
+  --accent: #b45309; --danger: #b91c1c; --ok: #15803d; --warn: #a16207; --on-fill: #fff;
+  color-scheme: light dark;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 15px;
   color: var(--fg); background: var(--bg);
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --card: #292524; --accent: #f59e0b; }
+  :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --card: #292524; --accent: #f59e0b;
+    --danger: #f87171; --ok: #4ade80; --warn: #facc15; --on-fill: #1c1917; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
@@ -22,8 +24,8 @@ table { width: 100%; border-collapse: collapse; background: var(--card); }
 th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-weight: 600; color: var(--muted); font-size: .85rem; }
 button, .btn { font: inherit; padding: .4rem .8rem; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); cursor: pointer; }
-button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+button.primary { background: var(--accent); color: var(--on-fill); border-color: var(--accent); }
+button.danger { background: var(--danger); color: var(--on-fill); border-color: var(--danger); }
 button.link { border: 0; background: none; color: var(--accent); padding: 0; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 .actions { display: flex; gap: .4rem; flex-wrap: wrap; }
