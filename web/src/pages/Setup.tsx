@@ -20,7 +20,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
 
   return (
     <main className="center">
-      <form onSubmit={submit} style={{ width: 360 }}>
+      <form onSubmit={submit} style={{ width: "min(360px, 100%)" }}>
         <h1>🥟 Welcome to Dumpling</h1>
         <p className="muted">Create the admin account.</p>
         <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} required maxLength={64} /></label>

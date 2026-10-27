@@ -67,11 +67,11 @@ export default function Operations() {
         <tbody>
           {ops.map((o) => (
             <tr key={o.id}>
-              <td><Link to={`/operations/${o.id}`}>{when(o.created_at)}</Link></td>
-              <td>{o.type}</td>
-              <td><span className={`status ${o.status}`}>{o.status}</span></td>
-              <td>{name(o.connection_id)}{o.database && ` / ${o.database}`}{o.type === "restore" && ` → ${name(o.target_connection_id)} / ${o.target_database}`}</td>
-              <td className="muted">{o.message}</td>
+              <td data-label="Created"><Link to={`/operations/${o.id}`}>{when(o.created_at)}</Link></td>
+              <td data-label="Type">{o.type}</td>
+              <td data-label="Status"><span className={`status ${o.status}`}>{o.status}</span></td>
+              <td data-label="Subject">{name(o.connection_id)}{o.database && ` / ${o.database}`}{o.type === "restore" && ` → ${name(o.target_connection_id)} / ${o.target_database}`}</td>
+              <td data-label="Message" className="muted">{o.message}</td>
             </tr>
           ))}
           {!ops.length && <tr><td colSpan={5} className="muted">No operations.</td></tr>}

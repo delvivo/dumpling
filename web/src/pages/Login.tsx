@@ -18,7 +18,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
 
   return (
     <main className="center">
-      <form onSubmit={submit} style={{ width: 340 }}>
+      <form onSubmit={submit} style={{ width: "min(340px, 100%)" }}>
         <h1>🥟 Dumpling</h1>
         <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required /></label>
         <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>

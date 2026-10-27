@@ -87,13 +87,13 @@ export default function Backups() {
         <tbody>
           {list.map((b) => (
             <tr key={b.id}>
-              <td>{when(b.started_at)}</td>
-              <td>{b.connection_name} / <strong>{b.database}</strong><div className="muted">{b.engine} {b.server_version}</div></td>
-              <td>{b.plan_name || (b.imported ? "–" : "on-demand")}{b.imported && <div><span className="status">imported</span></div>}</td>
-              <td><span className="status">{b.destination_type}</span> <code className="muted" title={b.location}>{b.location}</code></td>
-              <td>{bytes(b.size_bytes)}{b.encrypted && " 🔒"}{b.locked && <div><span className="status warning">locked</span></div>}</td>
-              <td><code title={b.sha256}>{b.sha256.slice(0, 12)}…</code></td>
-              <td><span className={`status ${b.status}`}>{b.status}</span></td>
+              <td data-label="Time">{when(b.started_at)}</td>
+              <td data-label="Database">{b.connection_name} / <strong>{b.database}</strong><div className="muted">{b.engine} {b.server_version}</div></td>
+              <td data-label="Plan">{b.plan_name || (b.imported ? "–" : "on-demand")}{b.imported && <div><span className="status">imported</span></div>}</td>
+              <td data-label="Destination"><span className="status">{b.destination_type}</span> <code className="muted" title={b.location}>{b.location}</code></td>
+              <td data-label="Size">{bytes(b.size_bytes)}{b.encrypted && " 🔒"}{b.locked && <div><span className="status warning">locked</span></div>}</td>
+              <td data-label="SHA-256"><code title={b.sha256}>{b.sha256.slice(0, 12)}…</code></td>
+              <td data-label="Status"><span className={`status ${b.status}`}>{b.status}</span></td>
               <td className="actions">
                 {b.status === "ok" && b.locked && <button onClick={() => setUnlock(b)}>Unlock</button>}
                 {b.status === "ok" && <button className="primary" onClick={() => setRestore(b)}>Restore</button>}

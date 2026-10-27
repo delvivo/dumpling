@@ -36,7 +36,7 @@ On Git Bash, `docker run -v` paths need `MSYS_NO_PATHCONV=1`.
 - `internal/runner` — backup/restore/verify/prune operations, in-memory locks (per plan, per restore target, per rescan), op logs with secret redaction (destination secrets via `openDest`), `Recover()`. Remote restore/verify download to `<data-dir>/tmp/<op>.artifact` (`fetch`) and checksum before touching the target. `rescan.go`: `Rescan` imports sidecars unknown to this install, `Unlock` stores passphrases of imported encrypted backups. `openStorage`/`newEngine` are test hooks.
 - `internal/schedule` — cron parsing (robfig/cron), `Keep()` retention, scheduler loop. Imported by runner (retention); scheduler calls runner via a callback to avoid an import cycle.
 - `internal/server` — stdlib mux API per `specs/001-db-backup-webui/contracts/api.md`, session auth + `X-Requested-With: dumpling` CSRF header, SSE hub (`/api/events`), SPA serving.
-- `web/` — Vite + React + TS, plain CSS, `react-router` declarative routes; pages in `web/src/pages/`, wrapped in `ErrorBoundary` (keyed by path). Dialogs use `Modal.tsx` (native `<dialog>` + `showModal()`), never `<dialog open>`. API list fields must always be JSON arrays, never `null` (UI maps over them).
+- `web/` — Vite + React + TS, plain CSS, `react-router` declarative routes; pages in `web/src/pages/`, wrapped in `ErrorBoundary` (keyed by path). Dialogs use `Modal.tsx` (native `<dialog>` + `showModal()`), never `<dialog open>`. List-table `<td>`s carry `data-label` (column name), used to stack rows on narrow screens. API list fields must always be JSON arrays, never `null` (UI maps over them).
 
 ## Handling change requests (mandatory)
 

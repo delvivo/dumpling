@@ -120,7 +120,7 @@ export default function Connections() {
         <tbody>
           {list.map((c) => (
             <tr key={c.id}>
-              <td>{c.name}</td><td>{c.engine}</td><td>{c.host}:{c.port}</td><td>{c.server_version || "–"}</td><td>{when(c.tested_at)}</td>
+              <td data-label="Name">{c.name}</td><td data-label="Engine">{c.engine}</td><td data-label="Host">{c.host}:{c.port}</td><td data-label="Version">{c.server_version || "–"}</td><td data-label="Last test">{when(c.tested_at)}</td>
               <td className="actions">
                 <button onClick={() => { setEdit({ ...c, password: "" }); setTest(null); }}>Edit</button>
                 <button onClick={() => remove(c)}>Delete</button>

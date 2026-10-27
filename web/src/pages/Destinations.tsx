@@ -60,8 +60,8 @@ export default function Destinations() {
         <tbody>
           {list.map((d) => (
             <tr key={d.id}>
-              <td>{d.name}</td><td>{d.type}</td><td><code>{location(d)}</code></td><td>{d.backup_count ?? 0}</td>
-              <td>{d.type === "local" ? bytes(d.free_bytes) : "–"}</td>
+              <td data-label="Name">{d.name}</td><td data-label="Type">{d.type}</td><td data-label="Location"><code>{location(d)}</code></td><td data-label="Backups">{d.backup_count ?? 0}</td>
+              <td data-label="Free space">{d.type === "local" ? bytes(d.free_bytes) : "–"}</td>
               <td className="actions">
                 <button onClick={() => { setEdit(d); setNotice(""); }}>Edit</button>
                 <button onClick={() => rescan(d)} title="Import backups found on this destination">Rescan</button>

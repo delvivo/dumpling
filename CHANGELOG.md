@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the table, Esc closes, focus moves inside and returns to the opener.
 - Dark mode: error/success/warning colors and text on primary/danger buttons now meet WCAG AA
   contrast; native controls (checkboxes, selects, scrollbars) follow the dark theme.
+- Mobile: list tables stack into one card per row on narrow screens instead of scrolling the page
+  sideways; login/setup forms fit 320px screens; on touch devices controls are at least 44px tall
+  and fields use 16px text (no iOS zoom on focus).
 - Encryption passphrases (on-demand backup, plan) must be typed twice; mismatch blocks submit.
 - Backup now keeps the dialog and its input open on error; Backup now and Save plan can't be
   double-submitted.

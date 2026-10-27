@@ -167,7 +167,9 @@ In dark mode each semantic color brightens (`chili-red-night`, `scallion-green-n
 
 ## Layout
 
-A top nav bar spans the full width; content sits in a centered `main` capped at 1200px with 1.5rem padding. Pages are vertical stacks: headline row, optional filters row, then a table or tray. Forms use an auto-fit grid (`minmax(160px, 1fr)`) so fields reflow to fewer columns on narrow screens. Nav, action groups and filters use wrapping flex rows. No breakpoints are defined: responsiveness comes entirely from wrapping and auto-fit.
+A top nav bar spans the full width; content sits in a centered `main` capped at 1200px with 1.5rem padding. Pages are vertical stacks: headline row, optional filters row, then a table or tray. Forms use an auto-fit grid (`minmax(160px, 1fr)`) so fields reflow to fewer columns on narrow screens. Nav, action groups, filters and the headline row use wrapping flex rows.
+
+One breakpoint, **narrow (≤640px)**: page and nav padding drop to 1rem, and list tables stack into trays, one tray per row with a "label: value" line per cell (label from the cell's `data-label`, in Steam Grey at 0.85rem, 6.5rem column) and the row actions underneath. Every data cell of a list table carries `data-label`. On touch devices (`pointer: coarse`) buttons and fields are at least 44px tall and fields use 16px text so iOS doesn't zoom on focus. Login and setup trays are fluid (`min(340–360px, 100%)`).
 
 Spacing steps observed: 0.25, 0.4, 0.5, 0.75, 1 and 1.5rem. Trays pad 1rem with 0.75rem gaps; action groups gap 0.4rem.
 

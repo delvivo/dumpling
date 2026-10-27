@@ -45,11 +45,11 @@ export default function Plans() {
         <tbody>
           {list.map((p) => (
             <tr key={p.id}>
-              <td>{p.name}{p.encrypted && " 🔒"}{p.paused && <span className="status skipped"> paused</span>}</td>
-              <td>{conns.find((c) => c.id === p.connection_id)?.name} / {p.databases.join(", ")}</td>
-              <td><code>{p.schedule}</code></td>
-              <td>{p.paused ? "–" : when(p.next_run)}</td>
-              <td>{p.last_operation ? <Link to={`/operations/${p.last_operation.id}`}><span className={`status ${p.last_operation.status}`}>{p.last_operation.status}</span></Link> : "–"}</td>
+              <td data-label="Name">{p.name}{p.encrypted && " 🔒"}{p.paused && <span className="status skipped"> paused</span>}</td>
+              <td data-label="Source">{conns.find((c) => c.id === p.connection_id)?.name} / {p.databases.join(", ")}</td>
+              <td data-label="Schedule"><code>{p.schedule}</code></td>
+              <td data-label="Next run">{p.paused ? "–" : when(p.next_run)}</td>
+              <td data-label="Last run">{p.last_operation ? <Link to={`/operations/${p.last_operation.id}`}><span className={`status ${p.last_operation.status}`}>{p.last_operation.status}</span></Link> : "–"}</td>
               <td className="actions">
                 <button onClick={() => act(() => post(`/plans/${p.id}/run`))}>Run now</button>
                 <button onClick={() => act(() => post(`/plans/${p.id}/${p.paused ? "resume" : "pause"}`))}>{p.paused ? "Resume" : "Pause"}</button>

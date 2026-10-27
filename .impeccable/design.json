@@ -33,7 +33,9 @@
     },
     "shadows": [],
     "motion": [],
-    "breakpoints": []
+    "breakpoints": [
+      { "name": "narrow", "value": "640px" }
+    ]
   },
   "components": [
     {
