@@ -1,6 +1,6 @@
 :root {
   --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4; --card: #fff;
-  --accent: #b45309; --danger: #b91c1c; --ok: #15803d; --warn: #a16207; --on-fill: #fff;
+  --accent: #b45309; --danger: #b91c1c; --ok: #15803d; --warn: #854d0e; --on-fill: #fff;
   --control-line: #8c847d; --fill-hover: brightness(.9);
   color-scheme: light dark;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 15px;
@@ -66,6 +66,7 @@ h1 { flex-wrap: wrap; }
 @media (pointer: coarse) {
   button:not(.link), select, textarea, input:not([type="checkbox"], [type="radio"]) { min-height: 44px; }
   select, textarea, input:not([type="checkbox"], [type="radio"]) { font-size: 16px; }
+  nav a, button.link { display: inline-flex; align-items: center; min-height: 44px; }
 }
 
 /* Narrow screens: list tables stack into trays, one "label: value" line per cell (data-label). */

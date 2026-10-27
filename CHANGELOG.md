@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the table, Esc closes, focus moves inside and returns to the opener.
 - Dark mode: error/success/warning colors and text on primary/danger buttons now meet WCAG AA
   contrast; native controls (checkboxes, selects, scrollbars) follow the dark theme.
+- Warning text in light mode meets WCAG AA (5.7:1 on its banner tint, was 4.2:1).
+- Delete confirmations (backup, connection, destination, plan) use an in-app dialog instead of the
+  browser's confirm/prompt: themed, focus starts on Cancel, deleting a backup still requires typing
+  the database name.
+- On touch devices nav links and Log out are at least 44px tall.
 - Buttons and fields have borders with at least 3:1 contrast, a visible amber keyboard focus ring
   and hover feedback; backup rows no longer show an amber Restore on every row, and row Delete
   buttons are marked in red.

@@ -13,7 +13,7 @@
       "fried-wrapper-amber-night": { "role": "primary", "displayName": "Fried-Wrapper Amber (dark mode)", "canonical": "#f59e0b", "tonalRamp": ["#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fcd34d", "#fde68a"] },
       "chili-red": { "role": "semantic", "displayName": "Chili Red", "canonical": "#b91c1c", "tonalRamp": ["#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca"] },
       "scallion-green": { "role": "semantic", "displayName": "Scallion Green", "canonical": "#15803d", "tonalRamp": ["#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#bbf7d0"] },
-      "mustard": { "role": "semantic", "displayName": "Mustard", "canonical": "#a16207", "tonalRamp": ["#713f12", "#854d0e", "#a16207", "#ca8a04", "#eab308", "#facc15", "#fde047", "#fef08a"] },
+      "mustard": { "role": "semantic", "displayName": "Mustard", "canonical": "#854d0e", "tonalRamp": ["#713f12", "#854d0e", "#a16207", "#ca8a04", "#eab308", "#facc15", "#fde047", "#fef08a"] },
       "chili-red-night": { "role": "semantic", "displayName": "Chili Red (dark mode)", "canonical": "#f87171", "tonalRamp": ["#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca"] },
       "scallion-green-night": { "role": "semantic", "displayName": "Scallion Green (dark mode)", "canonical": "#4ade80", "tonalRamp": ["#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#bbf7d0"] },
       "mustard-night": { "role": "semantic", "displayName": "Mustard (dark mode)", "canonical": "#facc15", "tonalRamp": ["#713f12", "#854d0e", "#a16207", "#ca8a04", "#eab308", "#facc15", "#fde047", "#fef08a"] },

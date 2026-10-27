@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { bytes, del, get, post, when } from "../api";
 import { useEvents } from "../events";
 import type { Backup, Connection, Destination, Operation } from "../types";
-import Modal from "../Modal";
+import Modal, { Confirm } from "../Modal";
 import RestoreWizard from "./RestoreWizard";
 
 type Tools = Record<string, { version: string; variant?: string } | null>;
@@ -19,6 +19,7 @@ export default function Backups() {
   const [showNew, setShowNew] = useState(false);
   const [restore, setRestore] = useState<Backup | null>(null);
   const [unlock, setUnlock] = useState<Backup | null>(null);
+  const [deleting, setDeleting] = useState<Backup | null>(null);
   const [error, setError] = useState("");
 
   const load = () => {
@@ -53,9 +54,7 @@ export default function Backups() {
   const verify = async (b: Backup) => {
     try { await post(`/backups/${b.id}/verify`); } catch (err: any) { setError(err.message); }
   };
-  const remove = async (b: Backup) => {
-    const typed = prompt(`Delete this backup permanently? Type the database name "${b.database}" to confirm.`);
-    if (typed === null) return;
+  const remove = async (b: Backup, typed: string) => {
     try { await del(`/backups/${b.id}`, { confirm: typed }); load(); } catch (err: any) { setError(err.message); }
   };
 
@@ -98,7 +97,7 @@ export default function Backups() {
                 {b.status === "ok" && b.locked && <button onClick={() => setUnlock(b)}>Unlock</button>}
                 {b.status === "ok" && <button onClick={() => setRestore(b)}>Restore</button>}
                 {b.status !== "deleted" && <button onClick={() => verify(b)}>Verify</button>}
-                {b.status !== "deleted" && <button className="subtle-danger" onClick={() => remove(b)}>Delete</button>}
+                {b.status !== "deleted" && <button className="subtle-danger" onClick={() => setDeleting(b)}>Delete</button>}
               </td>
             </tr>
           ))}
@@ -108,6 +107,11 @@ export default function Backups() {
       {showNew && <NewBackup conns={conns} dests={dests} onClose={() => setShowNew(false)} />}
       {restore && <RestoreWizard backup={restore} onClose={() => setRestore(null)} />}
       {unlock && <UnlockDialog backup={unlock} onClose={() => { setUnlock(null); load(); }} />}
+      {deleting && (
+        <Confirm title="Delete this backup permanently?" confirmLabel="Delete backup" typeToConfirm={deleting.database} onConfirm={(typed) => remove(deleting, typed)} onClose={() => setDeleting(null)}>
+          <p className="muted">{deleting.connection_name} / {deleting.database} — {when(deleting.started_at)}</p>
+        </Confirm>
+      )}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { del, get, post, put, when } from "../api";
 import { fromCron, toCron, type Preset } from "../cronPresets";
 import type { Connection, Destination, Plan } from "../types";
+import { Confirm } from "../Modal";
 
 const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -30,14 +31,16 @@ export default function Plans() {
     try { await fn(); load(); } catch (err: any) { setError(err.message); }
   };
 
-  const remove = (p: Plan) => {
-    const extra = p.encrypted ? " Its stored passphrase is deleted too: restoring its encrypted backups will then require typing the passphrase." : "";
-    if (confirm(`Delete plan ${p.name}? Existing backups are kept.${extra}`)) act(() => del(`/plans/${p.id}`));
-  };
+  const [deleting, setDeleting] = useState<Plan | null>(null);
 
   return (
     <>
       <h1>Plans <button className="primary" onClick={() => setEdit({ ...empty(), connection_id: conns[0]?.id ?? "", destination_id: dests[0]?.id ?? "" })} disabled={!conns.length || !dests.length}>Add plan</button></h1>
+      {deleting && (
+        <Confirm title={`Delete plan ${deleting.name}?`} confirmLabel="Delete plan" onConfirm={() => act(() => del(`/plans/${deleting.id}`))} onClose={() => setDeleting(null)}>
+          Existing backups are kept.{deleting.encrypted && " Its stored passphrase is deleted too: restoring its encrypted backups will then require typing the passphrase."}
+        </Confirm>
+      )}
       {error && <p className="error" role="alert">{error}</p>}
       {edit && <PlanForm plan={edit} conns={conns} dests={dests} onDone={() => { setEdit(null); load(); }} onCancel={() => setEdit(null)} />}
       <table>
@@ -54,7 +57,7 @@ export default function Plans() {
                 <button onClick={() => act(() => post(`/plans/${p.id}/run`))}>Run now</button>
                 <button onClick={() => act(() => post(`/plans/${p.id}/${p.paused ? "resume" : "pause"}`))}>{p.paused ? "Resume" : "Pause"}</button>
                 <button onClick={() => setEdit(p)}>Edit</button>
-                <button className="subtle-danger" onClick={() => remove(p)}>Delete</button>
+                <button className="subtle-danger" onClick={() => setDeleting(p)}>Delete</button>
               </td>
             </tr>
           ))}

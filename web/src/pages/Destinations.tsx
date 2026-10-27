@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, bytes, del, get, post, put } from "../api";
 import type { Destination, DestinationType, RescanResult, S3Config, SFTPConfig } from "../types";
+import { Confirm } from "../Modal";
 
 const blankS3: S3Config = { endpoint: "", use_tls: true, region: "us-east-1", bucket: "", prefix: "", access_key_id: "", path_style: false };
 const blankSFTP: SFTPConfig = { host: "", port: 22, username: "", auth: "password", remote_dir: "", host_key_fingerprint: "" };
@@ -37,8 +38,8 @@ export default function Destinations() {
     catch (err: any) { setError(err.message); }
   };
 
+  const [deleting, setDeleting] = useState<Destination | null>(null);
   const remove = async (d: Destination) => {
-    if (!confirm(`Delete destination ${d.name}? Stored backup files are not touched.`)) return;
     setError(""); setNotice("");
     try { await del(`/destinations/${d.id}`); load(); }
     catch (err) {
@@ -52,6 +53,7 @@ export default function Destinations() {
   return (
     <>
       <h1>Destinations <button className="primary" onClick={() => { setEdit(blank()); setNotice(""); }}>Add destination</button></h1>
+      {deleting && <Confirm title={`Delete destination ${deleting.name}?`} confirmLabel="Delete destination" onConfirm={() => remove(deleting)} onClose={() => setDeleting(null)}>Stored backup files are not touched.</Confirm>}
       {error && <p className="error" role="alert">{error}</p>}
       {notice && <p className="card">{notice}</p>}
       {edit && <DestinationForm key={edit.id || "new"} initial={edit} onDone={(n) => { setEdit(null); if (n) setNotice(n); load(); }} />}
@@ -65,7 +67,7 @@ export default function Destinations() {
               <td className="actions">
                 <button onClick={() => { setEdit(d); setNotice(""); }}>Edit</button>
                 <button onClick={() => rescan(d)} title="Import backups found on this destination">Rescan</button>
-                <button className="subtle-danger" onClick={() => remove(d)}>Delete</button>
+                <button className="subtle-danger" onClick={() => setDeleting(d)}>Delete</button>
               </td>
             </tr>
           ))}

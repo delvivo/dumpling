@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { del, get, post, put, when } from "../api";
 import type { Connection, Engine } from "../types";
+import { Confirm } from "../Modal";
 
 const defaults: Record<Engine, { port: number; username: string }> = {
   postgres: { port: 5432, username: "postgres" },
@@ -61,14 +62,15 @@ export default function Connections() {
     }
   };
 
+  const [deleting, setDeleting] = useState<Connection | null>(null);
   const remove = async (c: Connection) => {
-    if (!confirm(`Delete connection ${c.name}? Existing backups stay restorable to other targets.`)) return;
     try { await del(`/connections/${c.id}`); load(); } catch (err: any) { setError(err.message); }
   };
 
   return (
     <>
       <h1>Connections <button className="primary" onClick={() => { setEdit(empty()); setTest(null); }}>Add connection</button></h1>
+      {deleting && <Confirm title={`Delete connection ${deleting.name}?`} confirmLabel="Delete connection" onConfirm={() => remove(deleting)} onClose={() => setDeleting(null)}>Existing backups stay restorable to other targets.</Confirm>}
       {error && <p className="error" role="alert">{error}</p>}
       {edit && (
         <form onSubmit={save} style={{ marginBottom: "1.5rem" }}>
@@ -123,7 +125,7 @@ export default function Connections() {
               <td data-label="Name">{c.name}</td><td data-label="Engine">{c.engine}</td><td data-label="Host">{c.host}:{c.port}</td><td data-label="Version">{c.server_version || "–"}</td><td data-label="Last test">{when(c.tested_at)}</td>
               <td className="actions">
                 <button onClick={() => { setEdit({ ...c, password: "" }); setTest(null); }}>Edit</button>
-                <button className="subtle-danger" onClick={() => remove(c)}>Delete</button>
+                <button className="subtle-danger" onClick={() => setDeleting(c)}>Delete</button>
               </td>
             </tr>
           ))}

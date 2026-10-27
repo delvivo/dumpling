@@ -10,7 +10,7 @@ colors:
   fried-wrapper-amber: "#b45309"
   chili-red: "#b91c1c"
   scallion-green: "#15803d"
-  mustard: "#a16207"
+  mustard: "#854d0e"
   chili-red-night: "#f87171"
   scallion-green-night: "#4ade80"
   mustard-night: "#facc15"
@@ -220,7 +220,7 @@ Restrained: plain bordered controls, with color reserved for intent.
 - **Error:** Chili Red text below the field or form (`.error`).
 
 ### Navigation
-- Horizontal bar on Wrapper White with a bottom border. Brand (🥟 Dumpling, bold) left, links in Soy Ink with no underline, user name and Log out pushed right. Active link turns amber with a 2px amber underline. Wraps on narrow screens.
+- Horizontal bar on Wrapper White with a bottom border. Brand (🥟 Dumpling, bold) left, links in Soy Ink with no underline, user name and Log out pushed right. Active link turns amber with a 2px amber underline. Wraps on narrow screens; on touch devices links and Log out are at least 44px tall.
 
 ### Tables
 - Full width, Wrapper White, collapsed borders; each row separated by a 1px Basket Line; cells pad 0.5rem 0.6rem and top-align.
@@ -236,7 +236,7 @@ Restrained: plain bordered controls, with color reserved for intent.
 ### Do:
 - **Do** keep everything in `web/src/styles.css` with tokens as `:root` custom properties; add a dark value in the `prefers-color-scheme` block for any new neutral.
 - **Do** build screens from the existing trays, tables, stacked labels and `.row` grid before inventing a layout.
-- **Do** use the native `<dialog>` for confirmations, with a Danger button for destructive ones.
+- **Do** confirm destructive actions with the `Confirm` dialog (native `<dialog>` via `Modal`): Danger button, initial focus on Cancel, and a typed name for irreversible deletes. Never `window.confirm`/`prompt`.
 - **Do** show outcomes with the status pill vocabulary and its fixed color mapping.
 
 ### Don't:
