@@ -52,6 +52,8 @@ func (s *Server) Handler() http.Handler {
 
 	api("GET /api/destinations", s.listDestinations)
 	api("POST /api/destinations", s.saveDestination)
+	api("POST /api/destinations/test", s.testDestination)
+	api("POST /api/destinations/{id}/rescan", s.rescanDestination)
 	api("PUT /api/destinations/{id}", s.saveDestination)
 	api("DELETE /api/destinations/{id}", s.deleteDestination)
 
@@ -67,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	api("GET /api/backups", s.listBackups)
 	api("GET /api/backups/{id}", s.getBackup)
 	api("POST /api/backups/{id}/verify", s.verifyBackup)
+	api("POST /api/backups/{id}/unlock", s.unlockBackup)
 	api("DELETE /api/backups/{id}", s.deleteBackup)
 
 	api("POST /api/restores/preflight", s.preflight)

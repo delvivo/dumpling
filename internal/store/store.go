@@ -34,6 +34,10 @@ func Open(path string, box *secret.Box) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := migrate(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{DB: db, Box: box}, nil
 }
 

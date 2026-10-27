@@ -17,6 +17,7 @@ export default function Backups() {
   const [running, setRunning] = useState<Record<string, Operation>>({});
   const [showNew, setShowNew] = useState(false);
   const [restore, setRestore] = useState<Backup | null>(null);
+  const [unlock, setUnlock] = useState<Backup | null>(null);
   const [error, setError] = useState("");
 
   const load = () => {
@@ -79,29 +80,78 @@ export default function Backups() {
         </select>
       </div>
       <table>
-        <thead><tr><th>Time</th><th>Connection / database</th><th>Plan</th><th>Size</th><th>SHA-256</th><th>Status</th><th /></tr></thead>
+        <thead><tr><th>Time</th><th>Connection / database</th><th>Plan</th><th>Destination</th><th>Size</th><th>SHA-256</th><th>Status</th><th /></tr></thead>
         <tbody>
           {list.map((b) => (
             <tr key={b.id}>
               <td>{when(b.started_at)}</td>
               <td>{b.connection_name} / <strong>{b.database}</strong><div className="muted">{b.engine} {b.server_version}</div></td>
-              <td>{b.plan_name || "on-demand"}</td>
-              <td>{bytes(b.size_bytes)}{b.encrypted && " 🔒"}</td>
+              <td>{b.plan_name || (b.imported ? "–" : "on-demand")}{b.imported && <div><span className="status">imported</span></div>}</td>
+              <td><span className="status">{b.destination_type}</span> <code className="muted" title={b.location}>{b.location}</code></td>
+              <td>{bytes(b.size_bytes)}{b.encrypted && " 🔒"}{b.locked && <div><span className="status warning">locked</span></div>}</td>
               <td><code title={b.sha256}>{b.sha256.slice(0, 12)}…</code></td>
               <td><span className={`status ${b.status}`}>{b.status}</span></td>
               <td className="actions">
+                {b.status === "ok" && b.locked && <button onClick={() => setUnlock(b)}>Unlock</button>}
                 {b.status === "ok" && <button className="primary" onClick={() => setRestore(b)}>Restore</button>}
                 {b.status !== "deleted" && <button onClick={() => verify(b)}>Verify</button>}
                 {b.status !== "deleted" && <button onClick={() => remove(b)}>Delete</button>}
               </td>
             </tr>
           ))}
-          {!list.length && <tr><td colSpan={7} className="muted">No backups.</td></tr>}
+          {!list.length && <tr><td colSpan={8} className="muted">No backups.</td></tr>}
         </tbody>
       </table>
       {showNew && <NewBackup conns={conns} dests={dests} onClose={() => setShowNew(false)} onError={setError} />}
       {restore && <RestoreWizard backup={restore} onClose={() => setRestore(null)} />}
+      {unlock && <UnlockDialog backup={unlock} onClose={() => { setUnlock(null); load(); }} />}
     </>
+  );
+}
+
+// UnlockDialog stores the passphrase of an imported encrypted backup (validated server-side by
+// decrypting the artifact header), optionally for every locked backup of the same origin.
+function UnlockDialog({ backup, onClose }: { backup: Backup; onClose: () => void }) {
+  const [passphrase, setPassphrase] = useState("");
+  const [all, setAll] = useState(true);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(""); setBusy(true);
+    try {
+      const r = await post<{ unlocked: string[] }>(`/backups/${backup.id}/unlock`, { passphrase, apply_to_origin: all });
+      setDone(r.unlocked.length);
+    } catch (err: any) {
+      setError(err.code === "wrong_passphrase" ? "Wrong passphrase." : err.message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <dialog open>
+      <form onSubmit={submit}>
+        <h2>Unlock imported backup</h2>
+        <p className="muted">{backup.connection_name || "?"} / {backup.database} — {new Date(backup.started_at).toLocaleString()}{backup.plan_name && ` (plan ${backup.plan_name})`}</p>
+        {done === null ? (
+          <>
+            <label>Passphrase<input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} required autoComplete="off" /></label>
+            <label className="inline"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Apply to all locked backups of the same origin</label>
+            {error && <p className="error">{error}</p>}
+            <div className="actions">
+              <button className="primary" disabled={busy}>Unlock</button>
+              <button type="button" onClick={onClose}>Cancel</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p>{done} backup(s) unlocked. The passphrase is stored encrypted.</p>
+            <div className="actions"><button type="button" className="primary" onClick={onClose}>Close</button></div>
+          </>
+        )}
+      </form>
+    </dialog>
   );
 }
 
@@ -147,7 +197,7 @@ function NewBackup({ conns, dests, onClose, onError }: { conns: Connection[]; de
             </label>
           ))}
         </fieldset>
-        <label>Destination<select value={destId} onChange={(e) => setDestId(e.target.value)}>{dests.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+        <label>Destination<select value={destId} onChange={(e) => setDestId(e.target.value)}>{dests.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.type})</option>)}</select></label>
         <label className="inline"><input type="checkbox" checked={encrypt} onChange={(e) => setEncrypt(e.target.checked)} /> Encrypt with passphrase</label>
         {encrypt && (
           <>

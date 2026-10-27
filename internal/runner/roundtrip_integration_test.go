@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/delvivo/dumpling/internal/secret"
+	"github.com/delvivo/dumpling/internal/storage"
 	"github.com/delvivo/dumpling/internal/store"
 )
 
@@ -169,7 +170,152 @@ CREATE TABLE orders (id int IDENTITY PRIMARY KEY, note varchar(50));`,
 
 func TestRoundTrip(t *testing.T) {
 	for _, ec := range cases(t) {
-		t.Run(ec.name, func(t *testing.T) { roundTrip(t, ec) })
+		t.Run(ec.name, func(t *testing.T) {
+			t.Run("local", func(t *testing.T) { roundTrip(t, ec) })
+			for name, d := range remoteDests(t) {
+				t.Run(name, func(t *testing.T) { remoteRoundTrip(t, ec, d) })
+			}
+		})
+	}
+}
+
+// remoteDests are the S3/SFTP test services from testdata/compose.yaml (env set by the `it` service).
+func remoteDests(t *testing.T) map[string]store.Destination {
+	out := map[string]store.Destination{}
+	if ep := os.Getenv("DUMPLING_TEST_S3_ENDPOINT"); ep != "" {
+		out["s3"] = store.Destination{Name: "s3", Type: "s3", S3: &store.S3Config{Endpoint: ep, Region: "us-east-1",
+			Bucket: os.Getenv("DUMPLING_TEST_S3_BUCKET"), Prefix: "rt-" + store.NewID(), PathStyle: true,
+			AccessKeyID: os.Getenv("DUMPLING_TEST_S3_KEY"), SecretAccessKey: os.Getenv("DUMPLING_TEST_S3_SECRET")}}
+	}
+	if addr := os.Getenv("DUMPLING_TEST_SFTP_ADDR"); addr != "" {
+		h, p := hostPort(t, addr)
+		fp, err := storage.ProbeHostKey(context.Background(), h, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out["sftp"] = store.Destination{Name: "sftp", Type: "sftp", SFTP: &store.SFTPConfig{Host: h, Port: p, Auth: "password",
+			Username: os.Getenv("DUMPLING_TEST_SFTP_USER"), Password: os.Getenv("DUMPLING_TEST_SFTP_PASSWORD"),
+			RemoteDir: os.Getenv("DUMPLING_TEST_SFTP_DIR") + "/rt-" + store.NewID(), HostKeyFingerprint: fp}}
+	}
+	return out
+}
+
+func newIT(t *testing.T, ec *engineCase) (*Runner, *store.Store) {
+	dir := t.TempDir()
+	for _, d := range []string{"logs", "tmp", "dest"} {
+		os.MkdirAll(filepath.Join(dir, d), 0o755)
+	}
+	box, _ := secret.New(bytes.Repeat([]byte{1}, 32))
+	st, err := store.Open(filepath.Join(dir, "db.sqlite"), box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.DB.Close() })
+	for _, c := range []*store.Connection{&ec.a, &ec.b} {
+		c.ID = ""
+		if err := st.SaveConnection(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return New(context.Background(), st, dir, nil), st
+}
+
+// remoteRoundTrip: backup to S3/SFTP, restore (plain and encrypted), verify outcomes, retention,
+// and rescan into a fresh install (SC-002, FR-009–FR-011, FR-016).
+func remoteRoundTrip(t *testing.T, ec engineCase, dest store.Destination) {
+	r, st := newIT(t, &ec)
+	if err := st.SaveDestination(&dest); err != nil {
+		t.Fatal(err)
+	}
+	execSQL(t, ec.a, ec.admin, ec.drop("shop"))
+	execSQL(t, ec.a, ec.admin, "CREATE DATABASE shop;")
+	execSQL(t, ec.a, "shop", ec.seed)
+	for _, db := range []string{"shop_r", "shop_re"} {
+		execSQL(t, ec.b, ec.admin, ec.drop(db))
+	}
+	n := atoi(execSQL(t, ec.a, "shop", ec.countSQL("orders")))
+
+	b := backupNow(t, r, st, ec.a, dest, "")
+	restore(t, r, st, b, ec.b, "shop_r", "", "")
+	check(t, ec, "shop_r", n, n)
+	be := backupNow(t, r, st, ec.a, dest, "it-passphrase")
+	restore(t, r, st, be, ec.b, "shop_re", "", "it-passphrase")
+	check(t, ec, "shop_re", n, n)
+
+	// verify: ok, checksum mismatch (object replaced), missing (object deleted)
+	verify := func(want string) {
+		t.Helper()
+		id, err := r.StartVerify(b.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Wait()
+		if o, _ := st.Operation(id); !strings.Contains(o.Message, want) {
+			t.Fatalf("verify: want %q, got %s %q", want, o.Status, o.Message)
+		}
+	}
+	verify("checksum ok")
+	sb, err := storage.Open(context.Background(), dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sb.Close()
+	sb.Remove(b.Path)
+	if err := storage.PutBytes(sb, b.Path, []byte("tampered")); err != nil {
+		t.Fatal(err)
+	}
+	verify("checksum mismatch")
+	sb.Remove(b.Path)
+	verify("artifact missing")
+
+	// retention: keep last 2 of 3 plan runs, remotely and in history
+	plan := store.Plan{Name: "keep2", ConnectionID: ec.a.ID, Databases: []string{"shop"}, DestinationID: dest.ID,
+		Schedule: "0 2 * * *", Retention: store.Retention{Last: 2}}
+	if err := st.SavePlan(&plan); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		r.RunPlan(plan)
+		r.Wait()
+		time.Sleep(1100 * time.Millisecond) // distinct started_at seconds
+	}
+	kept, _ := st.Backups(store.BackupFilter{PlanID: plan.ID, Status: "ok"})
+	if len(kept) != 2 {
+		t.Fatalf("retention kept %d in history", len(kept))
+	}
+	for _, k := range kept {
+		if _, err := sb.Stat(k.Path); err != nil {
+			t.Fatalf("kept backup missing remotely: %v", err)
+		}
+	}
+	all, _ := st.Backups(store.BackupFilter{PlanID: plan.ID, Status: "deleted"})
+	for _, d := range all {
+		if _, err := sb.Stat(d.Path); err == nil {
+			t.Fatalf("pruned backup still on destination: %s", d.Path)
+		}
+	}
+
+	// disaster recovery: a fresh install imports what is on the destination and restores it
+	r2, st2 := newIT(t, &ec)
+	d2 := dest
+	d2.ID = ""
+	if err := st2.SaveDestination(&d2); err != nil {
+		t.Fatal(err)
+	}
+	res, err := r2.Rescan(d2)
+	if err != nil || res.Imported != 3 { // encrypted one + 2 kept plan backups
+		t.Fatalf("rescan %+v %v", res, err)
+	}
+	imp, _ := st2.Backups(store.BackupFilter{Status: "ok"})
+	for _, ib := range imp {
+		if ib.Locked {
+			if _, err := r2.Unlock(ib.ID, "it-passphrase", false); err != nil {
+				t.Fatal(err)
+			}
+			execSQL(t, ec.b, ec.admin, ec.drop("shop_re"))
+			restore(t, r2, st2, ib, ec.b, "shop_re", "", "")
+			check(t, ec, "shop_re", n, n)
+		}
 	}
 }
 

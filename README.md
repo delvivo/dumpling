@@ -32,9 +32,49 @@ docker compose -f testdata/compose.yaml up -d --build --wait dumpling   # http:/
 docker compose -f testdata/compose.yaml down -v                         # tear down + delete volumes
 ```
 
-This starts Dumpling plus two instances each of PostgreSQL 17, MySQL 8.4 and SQL Server 2022.
-The header comment of the `dumpling` service in `testdata/compose.yaml` lists the host names,
-ports and test password to enter in the UI; use `/backups` as destination path.
+This starts Dumpling plus two instances each of PostgreSQL 17, MySQL 8.4 and SQL Server 2022,
+an S3-compatible server (RustFS) and an SFTP server. The comments in `testdata/compose.yaml` list
+the host names, ports and test credentials to enter in the UI; use `/backups` as local
+destination path.
+
+## Destinations
+
+Backups can be stored in three kinds of destination:
+
+| Type | Settings | Notes |
+|------|----------|-------|
+| Local directory / mount | absolute path | must exist and be writable; free space is shown |
+| S3-compatible bucket | endpoint (empty = AWS, or `https://host:port`), region, bucket, optional key prefix, access key + secret, path-style toggle | AWS S3, MinIO, Backblaze B2, Wasabi, Cloudflare R2, RustFS… static keys only |
+| SFTP server | host, port, user, password **or** private key (+ optional passphrase), absolute remote directory | server host key pinned on save |
+
+- **Test** writes, reads and deletes a probe file and reports why it failed (auth, missing
+  bucket/directory, permission, unreachable). Saving a destination runs the same test.
+- **SFTP host key**: Test shows the server's SHA256 fingerprint; click *Trust this host key*, then
+  save. Every later connection refuses a different key ("host key mismatch") — after a legitimate
+  server re-key, edit the destination, test and trust the new key.
+- Uploads stream (no full copy in memory or on local disk; S3 parts are 64 MiB, max artifact
+  625 GiB). An artifact appears on the destination only once completely written, is never
+  overwritten, and failed or interrupted uploads leave nothing listed (startup cleans up partial
+  files and incomplete S3 multipart uploads).
+- **Restore/verify from S3 or SFTP** download the artifact once to `<data-dir>/tmp`, check the
+  SHA-256 and restore from that copy, which is then deleted: the host needs free temporary space
+  for one artifact. Verify distinguishes *artifact missing*, *destination unreachable* (backup
+  status unchanged) and *checksum mismatch*.
+- Type and location (path, endpoint/bucket/prefix, host/port/directory) cannot change while a
+  destination holds backups; credentials can.
+
+### Disaster recovery: rescan and unlock
+
+Each artifact has a `.json` metadata sidecar next to it. Creating a destination automatically
+**rescans** it, and the *Rescan* button does it on demand: backups found there and unknown to this
+install are imported into history (nothing on the destination is modified; entries with missing or
+inconsistent metadata are skipped and reported). Imported backups belong to no plan and are never
+pruned by retention.
+
+Imported **encrypted** backups are *locked*, because their passphrase lived in the lost install.
+*Unlock* asks for the passphrase, checks it by decrypting the artifact header, stores it encrypted
+and can apply it to all locked backups of the same original plan. Alternatively enter the
+passphrase in the restore dialog for a one-off restore.
 
 ### From source
 
@@ -70,7 +110,8 @@ On first launch the UI asks you to create the admin account.
 
 ## Security notes
 
-- Connection passwords and plan passphrases are encrypted at rest (AES-256-GCM) with a master key
+- Connection passwords, destination secrets (S3 secret key, SFTP password/private key/key
+  passphrase), plan passphrases and unlock passphrases are encrypted at rest (AES-256-GCM) with a master key
   taken from `DUMPLING_MASTER_KEY` (base64 of 32 bytes) or generated in `<data-dir>/master.key` (0600).
   **Limit:** if the key file sits on the same disk as `dumpling.db`, this protects against leaks of
   the database file alone, not against full access to the data directory. Use the env variable to
@@ -110,14 +151,18 @@ having SQL Server write a small probe file that Dumpling must be able to read. T
 go test ./...                         # unit tests
 cd web && npm test                    # UI logic tests (Vitest)
 
-# integration: real backup → restore round-trip on all three engines
-docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b
+# integration: real backup → restore round-trip on all three engines × local/S3/SFTP destinations
+docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b s3 sftp
 docker compose -f testdata/compose.yaml run --rm it
 docker compose -f testdata/compose.yaml down
 ```
 
 `cd web && npm run dev` serves the UI with a proxy to a running backend on `127.0.0.1:9898`.
-Specification, plan and tasks live in `specs/001-db-backup-webui/`.
+Specification, plan and tasks live in `specs/001-db-backup-webui/` and
+`specs/002-s3-sftp-destinations/`. Storage tests (`internal/storage`) run against local and an
+in-process SFTP server; set `DUMPLING_TEST_S3_ENDPOINT`, `DUMPLING_TEST_S3_BUCKET`,
+`DUMPLING_TEST_S3_KEY`, `DUMPLING_TEST_S3_SECRET` (and `DUMPLING_TEST_SFTP_*`) to include real
+services, e.g. the compose ones on `127.0.0.1:19000` / `127.0.0.1:12222`.
 
 ## License
 

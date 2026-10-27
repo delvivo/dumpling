@@ -61,6 +61,9 @@ export default function RestoreWizard({ backup, onClose }: { backup: Backup; onC
       <form onSubmit={submit}>
         <h2>Restore backup</h2>
         <p className="muted">{backup.connection_name} / {backup.database} — {new Date(backup.started_at).toLocaleString()} ({backup.engine} {backup.server_version})</p>
+        {backup.destination_type && backup.destination_type !== "local" && (
+          <p className="muted">The artifact is downloaded once from <code>{backup.location}</code> to a temporary file and checksummed before the target is touched.</p>
+        )}
         <label>Target connection ({backup.engine} only)
           <select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
             {targets.map((c) => <option key={c.id} value={c.id}>{c.name} — {c.host}:{c.port}</option>)}
@@ -70,7 +73,8 @@ export default function RestoreWizard({ backup, onClose }: { backup: Backup; onC
         <label>Target database name<input value={database} onChange={(e) => setDatabase(e.target.value)} required /></label>
         {pf?.version_warning && <p className="warn">{pf.version_warning}</p>}
         {pf?.passphrase_required && (
-          <label>Backup passphrase<input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} required /></label>
+          <label>Backup passphrase{backup.locked && " (imported backup — used for this restore only, use Unlock to store it)"}
+            <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} required /></label>
         )}
         {backup.engine !== "mssql" && (
           <label className="inline"><input type="checkbox" checked={skipOwnership} onChange={(e) => setSkipOwnership(e.target.checked)} />

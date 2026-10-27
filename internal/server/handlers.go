@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 	"github.com/delvivo/dumpling/internal/engine"
 	"github.com/delvivo/dumpling/internal/runner"
 	"github.com/delvivo/dumpling/internal/schedule"
+	"github.com/delvivo/dumpling/internal/storage"
 	"github.com/delvivo/dumpling/internal/store"
 )
 
@@ -209,11 +212,92 @@ func (s *Server) listDestinations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for i := range ds {
-		if free, err := diskFree(ds[i].Path); err == nil {
-			ds[i].FreeBytes = &free
+		if ds[i].Type == "local" {
+			if free, err := diskFree(ds[i].Path); err == nil {
+				ds[i].FreeBytes = &free
+			}
 		}
+		ds[i] = ds[i].Public()
 	}
 	writeJSON(w, 200, ds)
+}
+
+// prepareDest normalizes input, merges stored secrets and validates; checkPin=false lets a test run
+// before the SFTP host key has been confirmed.
+func (s *Server) prepareDest(w http.ResponseWriter, d *store.Destination, checkPin bool) bool {
+	err := s.St.PrepareDestination(d)
+	if err == nil {
+		v := *d
+		if !checkPin && v.SFTP != nil && v.SFTP.HostKeyFingerprint == "" {
+			c := *v.SFTP
+			c.HostKeyFingerprint = "unconfirmed"
+			v.SFTP = &c
+		}
+		err = v.Validate()
+	}
+	var ve store.ValidationError
+	switch {
+	case err == nil:
+		return true
+	case errors.As(err, &ve):
+		writeErr(w, 400, "invalid", ve.Error())
+	case errors.Is(err, store.ErrLocationLocked):
+		writeErr(w, 409, "location_locked", "type and location cannot change while the destination holds backups")
+	default:
+		fail(w, err)
+	}
+	return false
+}
+
+// testDest checks a destination is usable: local paths must exist and be writable (never created),
+// remote ones accept a probe write/read/delete. Errors are written to w.
+func (s *Server) testDest(w http.ResponseWriter, r *http.Request, d store.Destination) (storage.TestResult, bool) {
+	if d.Type == "local" {
+		f, err := os.CreateTemp(filepath.Clean(d.Path), ".dumpling-write-test-*")
+		if err != nil {
+			writeErr(w, 400, "not_writable", "path must exist and be writable: "+err.Error())
+			return storage.TestResult{}, false
+		}
+		f.Close()
+		os.Remove(f.Name())
+		return storage.TestResult{}, true
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	res, err := storage.Test(ctx, d)
+	if err != nil {
+		msg, code := err.Error(), "unreachable"
+		var te *storage.TestError
+		if errors.As(err, &te) {
+			code = te.Code
+		}
+		for _, sec := range d.Secrets() {
+			msg = redact(msg, sec)
+		}
+		status := "test_failed"
+		if code == "host_key_mismatch" {
+			status = code
+		}
+		writeJSON(w, 400, map[string]any{"error": msg, "code": status, "detail": code,
+			"host_key_fingerprint": res.HostKeyFingerprint})
+		return res, false
+	}
+	return res, true
+}
+
+func (s *Server) testDestination(w http.ResponseWriter, r *http.Request) {
+	var d store.Destination
+	if !readJSON(w, r, &d) || !s.prepareDest(w, &d, false) {
+		return
+	}
+	if res, ok := s.testDest(w, r, d); ok {
+		writeJSON(w, 200, map[string]any{"ok": true, "host_key_fingerprint": res.HostKeyFingerprint})
+	}
+}
+
+type destView struct {
+	store.Destination
+	Rescan *runner.RescanResult `json:"rescan,omitempty"`
 }
 
 func (s *Server) saveDestination(w http.ResponseWriter, r *http.Request) {
@@ -222,35 +306,56 @@ func (s *Server) saveDestination(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.ID = r.PathValue("id")
-	if len(d.Name) < 1 || len(d.Name) > 64 {
-		writeErr(w, 400, "invalid", "name must be 1–64 characters")
+	if !s.prepareDest(w, &d, true) {
 		return
 	}
-	if !filepath.IsAbs(d.Path) {
-		writeErr(w, 400, "invalid", "path must be absolute")
+	// SFTP: Test re-probes the server and rejects a key different from the confirmed one (FR-004).
+	if _, ok := s.testDest(w, r, d); !ok {
 		return
 	}
-	d.Path = filepath.Clean(d.Path)
-	f, err := os.CreateTemp(d.Path, ".dumpling-write-test-*")
-	if err != nil {
-		writeErr(w, 400, "not_writable", "path must exist and be writable: "+err.Error())
-		return
-	}
-	f.Close()
-	os.Remove(f.Name())
-	status := 200
-	if d.ID == "" {
-		status = 201
-	}
+	created := d.ID == ""
 	if err := s.St.SaveDestination(&d); err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, status, d)
+	v := destView{Destination: d.Public()}
+	status := 200
+	if created { // import backups already on the destination (FR-016)
+		status = 201
+		if res, err := s.R.Rescan(d); err == nil {
+			v.Rescan = &res
+		} else {
+			slog.Warn("rescan after create", "destination", d.Name, "err", err)
+		}
+	}
+	if saved, err := s.St.Destination(d.ID); err == nil {
+		v.Destination = saved.Public()
+	}
+	writeJSON(w, status, v)
+}
+
+func (s *Server) rescanDestination(w http.ResponseWriter, r *http.Request) {
+	d, err := s.St.Destination(r.PathValue("id"))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	res, err := s.R.Rescan(d)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, 200, res)
 }
 
 func (s *Server) deleteDestination(w http.ResponseWriter, r *http.Request) {
-	if err := s.St.DeleteDestination(r.PathValue("id")); err != nil {
+	id := r.PathValue("id")
+	if err := s.St.DeleteDestination(id); errors.Is(err, store.ErrInUse) {
+		plans, n, _ := s.St.DestinationUsage(id)
+		writeJSON(w, 409, map[string]any{"error": "still used by plans or backups", "code": "in_use",
+			"detail": map[string]any{"plans": plans, "backup_count": n}})
+		return
+	} else if err != nil {
 		fail(w, err)
 		return
 	}
@@ -404,14 +509,30 @@ func (s *Server) createBackup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 202, map[string]any{"operation_ids": ids})
 }
 
+// withLocation fills destination type and display location (FR-015).
+func (s *Server) withLocation(bs []store.Backup) {
+	dests := map[string]store.Destination{}
+	for i := range bs {
+		d, ok := dests[bs[i].DestinationID]
+		if !ok {
+			d, _ = s.St.Destination(bs[i].DestinationID)
+			dests[bs[i].DestinationID] = d
+		}
+		if d.ID != "" {
+			bs[i].DestinationType, bs[i].Location = d.Type, storage.Location(d, bs[i].Path)
+		}
+	}
+}
+
 func (s *Server) listBackups(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	bs, err := s.St.Backups(store.BackupFilter{PlanID: q.Get("plan_id"), ConnectionID: q.Get("connection_id"),
-		Database: q.Get("database"), Status: q.Get("status")})
+		Database: q.Get("database"), Status: q.Get("status"), DestinationID: q.Get("destination_id")})
 	if err != nil {
 		fail(w, err)
 		return
 	}
+	s.withLocation(bs)
 	writeJSON(w, 200, bs)
 }
 
@@ -421,7 +542,25 @@ func (s *Server) getBackup(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, 200, b)
+	bs := []store.Backup{b}
+	s.withLocation(bs)
+	writeJSON(w, 200, bs[0])
+}
+
+func (s *Server) unlockBackup(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Passphrase    string `json:"passphrase"`
+		ApplyToOrigin bool   `json:"apply_to_origin"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	ids, err := s.R.Unlock(r.PathValue("id"), in.Passphrase, in.ApplyToOrigin)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"unlocked": ids})
 }
 
 func (s *Server) verifyBackup(w http.ResponseWriter, r *http.Request) {

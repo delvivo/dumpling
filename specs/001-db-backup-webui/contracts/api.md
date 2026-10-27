@@ -33,6 +33,9 @@ contain secrets. Secret fields (`password`, `passphrase`) are write-only: respon
 
 ## Destinations
 
+> Extended by feature 002 (S3/SFTP types, test, rescan, location lock): see
+> `specs/002-s3-sftp-destinations/contracts/api.md`, which supersedes the rows below.
+
 | GET | `/api/destinations` | list with `free_bytes` |
 | POST | `/api/destinations` | `{name, path}`; 400 `not_writable` |
 | PUT | `/api/destinations/{id}` | `{name, path}` |
@@ -50,6 +53,8 @@ contain secrets. Secret fields (`password`, `passphrase`) are write-only: respon
 | POST | `/api/plans/{id}/pause` · `/resume` | 204 |
 
 ## Backups
+
+> Feature 002 adds `imported`, `locked`, `destination_type`, `location` and `POST /api/backups/{id}/unlock`.
 
 | Method | Path | Body / Notes |
 |--------|------|--------------|

@@ -3,10 +3,13 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 
 	"github.com/delvivo/dumpling/internal/artifact"
 	"github.com/delvivo/dumpling/internal/engine"
+	"github.com/delvivo/dumpling/internal/storage"
 	"github.com/delvivo/dumpling/internal/store"
 )
 
@@ -73,8 +76,11 @@ func (r *Runner) plan(req RestoreReq) (*restorePlan, error) {
 	if t.ServerVersion != "" && b.ServerVersion != "" && engine.Major(t.ServerVersion) < engine.Major(b.ServerVersion) {
 		p.pf.VersionWarning = fmt.Sprintf("target server %s is older than the backup source %s; the restore may fail", t.ServerVersion, b.ServerVersion)
 	}
-	if b.Encrypted {
+	if b.Encrypted { // passphrase: request → stored by unlock → plan
 		p.passphrase = req.Passphrase
+		if p.passphrase == "" {
+			p.passphrase = b.PassphrasePlain()
+		}
 		if p.passphrase == "" && b.PlanID != "" {
 			if pl, err := r.St.Plan(b.PlanID); err == nil {
 				p.passphrase = pl.PassphrasePlain()
@@ -106,6 +112,9 @@ func (r *Runner) StartRestore(req RestoreReq) (string, error) {
 			"database %q exists: active connections will be terminated and it will be dropped and recreated; type its name to confirm", req.TargetDatabase)
 		e.Extra = map[string]any{"target_exists": true, "warnings": nonEmpty(p.pf.VersionWarning)}
 		return "", e
+	}
+	if p.pf.PassphraseRequired && p.backup.Locked {
+		return "", errf(http.StatusBadRequest, "backup_locked", "imported encrypted backup: unlock it or enter its passphrase")
 	}
 	if p.pf.PassphraseRequired {
 		return "", errf(http.StatusBadRequest, "passphrase_required", "backup is encrypted: passphrase required")
@@ -144,14 +153,31 @@ func (r *Runner) restore(o *store.Operation, p *restorePlan, req RestoreReq) {
 	}
 	l.AddSecret(p.target.Password)
 	l.AddSecret(p.passphrase)
-	path := artifactPath(p.dest, p.backup.Path)
 	if missing := engine.MissingTools(p.target.Engine); len(missing) > 0 {
 		r.finish(o, l, "failed", "missing client tools: "+fmt.Sprint(missing))
 		return
 	}
+	dst, err := r.openDest(p.dest, l)
+	if err != nil {
+		r.finish(o, l, "failed", "destination unreachable: "+err.Error())
+		return
+	}
+	defer dst.Close()
+	path, cleanup, err := r.fetch(dst, p.dest, p.backup.Path, o.ID, l)
+	defer cleanup()
+	if err != nil {
+		r.finish(o, l, "failed", "read artifact: "+err.Error())
+		return
+	}
 
-	l.Printf("verifying checksum of %s", path)
-	sum, err := artifact.Checksum(path)
+	l.Printf("verifying checksum of %s", storage.Location(p.dest, p.backup.Path))
+	f, err := os.Open(path)
+	if err != nil {
+		r.finish(o, l, "failed", "read artifact: "+err.Error())
+		return
+	}
+	defer f.Close()
+	sum, err := artifact.Checksum(f)
 	if err != nil {
 		r.finish(o, l, "failed", "read artifact: "+err.Error())
 		return
@@ -161,7 +187,11 @@ func (r *Runner) restore(o *store.Operation, p *restorePlan, req RestoreReq) {
 		r.finish(o, l, "failed", "checksum mismatch: backup marked corrupted, target left untouched")
 		return
 	}
-	src, err := artifact.Open(path, engine.Gzip(p.backup.Engine), p.passphrase)
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		r.finish(o, l, "failed", "read artifact: "+err.Error())
+		return
+	}
+	src, err := artifact.Open(f, engine.Gzip(p.backup.Engine), p.passphrase)
 	if err != nil {
 		if errors.Is(err, artifact.ErrPassphrase) {
 			err = artifact.ErrPassphrase

@@ -5,14 +5,17 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/delvivo/dumpling/internal/artifact"
 	"github.com/delvivo/dumpling/internal/engine"
 	"github.com/delvivo/dumpling/internal/secret"
+	"github.com/delvivo/dumpling/internal/storage"
 	"github.com/delvivo/dumpling/internal/store"
 )
 
@@ -80,12 +83,17 @@ func setup(t *testing.T) *env {
 func (e *env) backup(t *testing.T, pass string) store.Backup {
 	t.Helper()
 	rel := "adhoc/a/shop/" + store.NewID() + ".bak.gz"
-	w, err := artifact.Create(filepath.Join(e.dest.Path, rel), true, pass)
+	dst, _ := storage.Open(context.Background(), e.dest)
+	up, err := dst.Create(rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := artifact.Create(up, true, pass)
 	if err != nil {
 		t.Fatal(err)
 	}
 	w.Write([]byte("payload"))
-	size, sum, _ := w.Commit(nil)
+	size, sum, _ := w.Commit(dst, rel, nil)
 	b := store.Backup{ConnectionID: e.conn.ID, ConnectionName: "a", Engine: "mssql", ServerVersion: "16.0", Database: "shop",
 		DestinationID: e.dest.ID, Path: rel, SizeBytes: size, SHA256: sum, Encrypted: pass != "", Status: "ok",
 		StartedAt: store.Now(), FinishedAt: store.Now()}
@@ -194,12 +202,18 @@ func TestRecover(t *testing.T) {
 	e.r.newOp(o)
 	o.Status = "running"
 	e.st.UpdateOperation(o)
-	partial := filepath.Join(e.dest.Path, "p", "x", "db", "a.bak.gz"+artifact.PartialSuffix)
+	partial := filepath.Join(e.dest.Path, "p", "x", "db", "a.bak.gz"+storage.PartialSuffix)
 	os.MkdirAll(filepath.Dir(partial), 0o755)
 	os.WriteFile(partial, []byte("half"), 0o640)
 
+	tmp := filepath.Join(e.dir, "tmp", "OLD"+tmpSuffix)
+	os.WriteFile(tmp, []byte("stale download"), 0o600)
 	if err := e.r.Recover(); err != nil {
 		t.Fatal(err)
+	}
+	e.r.Wait()
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Fatal("stale temp download not removed")
 	}
 	if got, _ := e.st.Operation(o.ID); got.Status != "interrupted" {
 		t.Fatalf("status %s", got.Status)
@@ -234,5 +248,111 @@ func TestBackupAndPlanOverlap(t *testing.T) {
 	ok, _ := e.st.Backups(store.BackupFilter{PlanID: plan.ID, Status: "ok"})
 	if len(ok) != 1 || ok[0].ID != o.BackupID {
 		t.Fatalf("retention last=1 kept %d", len(ok))
+	}
+}
+
+func verifyOutcome(t *testing.T, e *env, b store.Backup) (store.Operation, store.Backup) {
+	t.Helper()
+	id, err := e.r.StartVerify(b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.r.Wait()
+	o, _ := e.st.Operation(id)
+	got, _ := e.st.Backup(b.ID)
+	return o, got
+}
+
+// FR-010: verify tells missing, unreachable and checksum mismatch apart.
+func TestVerifyOutcomes(t *testing.T) {
+	e := setup(t)
+	b := e.backup(t, "")
+	if o, _ := verifyOutcome(t, e, b); o.Status != "success" {
+		t.Fatalf("ok: %+v", o)
+	}
+
+	openStorage = func(context.Context, store.Destination) (storage.Backend, error) {
+		return nil, errors.New("dial tcp: connection refused")
+	}
+	o, got := verifyOutcome(t, e, b)
+	openStorage = storage.Open
+	if o.Status != "failed" || !strings.Contains(o.Message, "destination unreachable") || got.Status != "ok" {
+		t.Fatalf("unreachable: %+v %s", o, got.Status)
+	}
+
+	p := filepath.Join(e.dest.Path, b.Path)
+	data, _ := os.ReadFile(p)
+	data[len(data)-1] ^= 0xff
+	os.WriteFile(p, data, 0o640)
+	if o, got := verifyOutcome(t, e, b); !strings.Contains(o.Message, "checksum mismatch") || got.Status != "corrupted" {
+		t.Fatalf("mismatch: %+v %s", o, got.Status)
+	}
+
+	os.Remove(p)
+	if o, got := verifyOutcome(t, e, b); !strings.Contains(o.Message, "artifact missing") || got.Status != "corrupted" {
+		t.Fatalf("missing: %+v %s", o, got.Status)
+	}
+}
+
+// failRemove fails Remove for one path.
+type failRemove struct {
+	storage.Backend
+	fail string
+}
+
+func (f failRemove) Remove(rel string) error {
+	if rel == f.fail {
+		return errors.New("permission denied")
+	}
+	return f.Backend.Remove(rel)
+}
+
+// FR-011: a failed remote delete keeps the backup and ends the prune with a warning.
+func TestPruneWarningKeepsBackup(t *testing.T) {
+	e := setup(t)
+	plan := store.Plan{Name: "p", ConnectionID: e.conn.ID, Databases: []string{"shop"}, DestinationID: e.dest.ID,
+		Schedule: "0 2 * * *", Retention: store.Retention{Last: 1}}
+	e.st.SavePlan(&plan)
+	old := e.backup(t, "")
+	e.st.DB.Exec(`UPDATE backups SET plan_id=?, started_at='2020-01-01T00:00:00Z' WHERE id=?`, plan.ID, old.ID)
+	openStorage = func(ctx context.Context, d store.Destination) (storage.Backend, error) {
+		b, err := storage.Open(ctx, d)
+		return failRemove{b, old.Path}, err
+	}
+	t.Cleanup(func() { openStorage = storage.Open })
+
+	e.r.StartBackup(BackupReq{Conn: e.conn, Databases: plan.Databases, Dest: e.dest, Plan: &plan})
+	e.r.Wait()
+	if got, _ := e.st.Backup(old.ID); got.Status != "ok" {
+		t.Fatalf("failed delete must keep backup, got %s", got.Status)
+	}
+	ops, _ := e.st.Operations(store.OpFilter{Type: "prune"})
+	if len(ops) != 1 || ops[0].Status != "warning" || !strings.Contains(ops[0].Message, old.Path) {
+		t.Fatalf("prune op %+v", ops)
+	}
+}
+
+// Remote restores download to a temp file that is removed afterwards, success or failure.
+func TestFetchTempRemoved(t *testing.T) {
+	e := setup(t)
+	b := e.backup(t, "")
+	d := e.dest
+	d.Type, d.S3 = "s3", &store.S3Config{Bucket: "b"} // force the download path; backend stays local
+	dst, _ := storage.Open(context.Background(), e.dest)
+	l, _ := CreateLog(e.dir, "op1", nil)
+	defer l.Close()
+	p, cleanup, err := e.r.fetch(dst, d, b.Path, "op1", l)
+	if err != nil || filepath.Dir(p) != filepath.Join(e.dir, "tmp") {
+		t.Fatalf("fetch %s %v", p, err)
+	}
+	cleanup()
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatal("temp download not removed")
+	}
+	if _, _, err := e.r.fetch(dst, d, "missing.bak", "op2", l); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing: %v", err)
+	}
+	if m, _ := filepath.Glob(filepath.Join(e.dir, "tmp", "*"+tmpSuffix)); len(m) != 0 {
+		t.Fatalf("leftovers %v", m)
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/delvivo/dumpling/internal/artifact"
 	"github.com/delvivo/dumpling/internal/engine"
+	"github.com/delvivo/dumpling/internal/storage"
 	"github.com/delvivo/dumpling/internal/store"
 )
 
@@ -90,10 +91,20 @@ func (r *Runner) backup(o *store.Operation, req BackupReq, db string) (store.Bac
 	}
 	rel := fmt.Sprintf("%s/%s/%s/%s-%s.%s", safeName(planName), safeName(c.Name), safeName(db),
 		started.Format("20060102T150405Z"), strings.ToLower(o.ID[len(o.ID)-6:]), ext)
-	final := artifactPath(req.Dest, rel)
-	l.Printf("backup %s/%s → %s", c.Name, db, final)
+	dst, err := r.openDest(req.Dest, l)
+	if err != nil {
+		r.finish(o, l, "failed", "destination unreachable: "+err.Error())
+		return store.Backup{}, false
+	}
+	defer dst.Close()
+	l.Printf("backup %s/%s → %s", c.Name, db, storage.Location(req.Dest, rel))
 
-	w, err := artifact.Create(final, engine.Gzip(c.Engine), req.Passphrase)
+	up, err := dst.Create(rel)
+	if err != nil {
+		r.finish(o, l, "failed", err.Error())
+		return store.Backup{}, false
+	}
+	w, err := artifact.Create(up, engine.Gzip(c.Engine), req.Passphrase)
 	if err != nil {
 		r.finish(o, l, "failed", err.Error())
 		return store.Backup{}, false
@@ -110,9 +121,9 @@ func (r *Runner) backup(o *store.Operation, req BackupReq, db string) (store.Bac
 	if req.Plan != nil {
 		b.PlanID, b.PlanName = req.Plan.ID, req.Plan.Name
 	}
-	size, sum, err := w.Commit(map[string]any{
+	size, sum, err := w.Commit(dst, rel, map[string]any{
 		"engine": b.Engine, "server_version": b.ServerVersion, "database": db, "connection": c.Name,
-		"plan": b.PlanName, "encrypted": b.Encrypted, "gzip": engine.Gzip(c.Engine), "started_at": b.StartedAt,
+		"plan": b.PlanName, "plan_id": b.PlanID, "encrypted": b.Encrypted, "gzip": engine.Gzip(c.Engine), "started_at": b.StartedAt,
 		"finished_at": store.Now(), "operation_id": o.ID,
 	})
 	if err != nil && size == 0 {

@@ -4,16 +4,17 @@ package runner
 import (
 	"context"
 	"fmt"
-	"io/fs"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/delvivo/dumpling/internal/artifact"
 	"github.com/delvivo/dumpling/internal/engine"
+	"github.com/delvivo/dumpling/internal/storage"
 	"github.com/delvivo/dumpling/internal/store"
 )
 
@@ -129,8 +130,53 @@ func artifactPath(dest store.Destination, rel string) string {
 	return filepath.Join(dest.Path, filepath.FromSlash(rel))
 }
 
+// openDest connects to a destination and registers its secrets for log redaction.
+func (r *Runner) openDest(d store.Destination, l *OpLog) (storage.Backend, error) {
+	if l != nil {
+		for _, s := range d.Secrets() {
+			l.AddSecret(s)
+		}
+	}
+	return openStorage(r.ctx, d)
+}
+
+// openStorage is replaceable in tests.
+var openStorage = storage.Open
+
+// fetch returns a local file holding rel: the artifact itself for local destinations, otherwise a
+// one-time download to <data-dir>/tmp/<op-id>.artifact removed by the returned cleanup (FR-009).
+func (r *Runner) fetch(b storage.Backend, d store.Destination, rel, opID string, l *OpLog) (string, func(), error) {
+	if d.Type == "" || d.Type == "local" {
+		return artifactPath(d, rel), func() {}, nil
+	}
+	l.Printf("downloading %s", storage.Location(d, rel))
+	src, err := b.Open(rel)
+	if err != nil {
+		return "", func() {}, err
+	}
+	defer src.Close()
+	tmp := filepath.Join(r.DataDir, "tmp", opID+tmpSuffix)
+	cleanup := func() { os.Remove(tmp) }
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return "", func() {}, err
+	}
+	_, err = io.Copy(f, src)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return tmp, cleanup, nil
+}
+
+const tmpSuffix = ".artifact"
+
 // Recover marks operations left running by a previous process as interrupted and removes their
-// partial files (FR-026).
+// partial files and temp downloads (FR-026, FR-014). Remote destinations are cleaned in the
+// background so startup never waits on the network.
 func (r *Runner) Recover() error {
 	ops, err := r.St.Unfinished()
 	if err != nil {
@@ -146,17 +192,33 @@ func (r *Runner) Recover() error {
 		o.Status, o.Message, o.FinishedAt = "interrupted", "process stopped while operation was running", store.Now()
 		r.St.UpdateOperation(o)
 	}
+	if tmps, err := filepath.Glob(filepath.Join(r.DataDir, "tmp", "*"+tmpSuffix)); err == nil {
+		for _, p := range tmps {
+			os.Remove(p)
+		}
+	}
 	dests, err := r.St.Destinations()
 	if err != nil {
 		return err
 	}
+	cleanup := func(d store.Destination) {
+		ctx, cancel := context.WithTimeout(r.ctx, 30*time.Second)
+		defer cancel()
+		b, err := openStorage(ctx, d)
+		if err == nil {
+			err = b.Cleanup()
+			b.Close()
+		}
+		if err != nil {
+			slog.Warn("destination cleanup", "destination", d.Name, "err", err)
+		}
+	}
 	for _, d := range dests {
-		filepath.WalkDir(d.Path, func(p string, e fs.DirEntry, err error) error {
-			if err == nil && !e.IsDir() && strings.HasSuffix(p, artifact.PartialSuffix) {
-				os.Remove(p)
-			}
-			return nil
-		})
+		if d.Type == "local" {
+			cleanup(d)
+		} else {
+			r.goRun(func() { cleanup(d) })
+		}
 	}
 	if len(ops) > 0 {
 		slog.Warn("marked interrupted operations", "count", len(ops))

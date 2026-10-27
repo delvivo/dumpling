@@ -19,8 +19,8 @@ cd web && npm run dev                        # UI dev server, proxies /api to :9
 docker compose -f testdata/compose.yaml up -d --build --wait dumpling   # app + test DBs on :9898
 
 # integration round-trip on real engines (host lacks client tools → runs in a container)
-docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b
-docker compose -f testdata/compose.yaml run --rm it
+docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b s3 sftp
+docker compose -f testdata/compose.yaml run --rm it   # runner round-trip × local/s3/sftp + storage contract
 docker compose -f testdata/compose.yaml down
 ```
 
@@ -29,10 +29,11 @@ On Git Bash, `docker run -v` paths need `MSYS_NO_PATHCONV=1`.
 ## Architecture
 
 - `cmd/dumpling` — flags (each defaults to a `DUMPLING_*` env var), wiring, startup recovery, scheduler loop, loopback/TLS warning.
-- `internal/store` — SQLite schema (`schema.sql`, embedded) and queries; secrets sealed via `internal/secret` (AES-256-GCM, master key from `DUMPLING_MASTER_KEY` or `<data-dir>/master.key`).
+- `internal/store` — SQLite schema (`schema.sql`, embedded) plus additive migrations (`migrate.go`, `PRAGMA user_version`) and queries; secrets sealed via `internal/secret` (AES-256-GCM, master key from `DUMPLING_MASTER_KEY` or `<data-dir>/master.key`). Destinations (`destinations.go`): `type` + `config` JSON + sealed `secret` JSON; `Public()` strips secrets for responses; location fields locked while backups exist.
 - `internal/engine` — `Engine` interface with `postgres` (psql/pg_dump/pg_restore, password via `PGPASSWORD`), `mysql` (mysql/mysqldump, credentials via temp `--defaults-extra-file`), `mssql` (go-mssqldb, native BACKUP/RESTORE through a shared directory). Secrets never on argv.
-- `internal/artifact` — streaming pipeline gzip → age → sha256 → `.partial` → link to final name (never overwrites) + JSON sidecar.
-- `internal/runner` — backup/restore/verify/prune operations, in-memory locks (per plan, per restore target), op logs with secret redaction, `Recover()`. Restore validates then checksums before touching the target.
+- `internal/storage` — `Backend` interface (`local`, `s3` via minio-go, `sftp` via pkg/sftp): no-overwrite `Create`/`Commit`, `Open`, `Stat`, `Remove`, `List`, `Cleanup`; "not found" wraps `fs.ErrNotExist`. `Test` probes write/read/delete; SFTP host key pinned (`ProbeHostKey`). Tests: local + in-process SFTP always, real S3/SFTP via `DUMPLING_TEST_S3_*`/`DUMPLING_TEST_SFTP_*`.
+- `internal/artifact` — streaming pipeline gzip → age → sha256 into a `storage.Upload` + JSON sidecar (`<rel>.json`, includes `plan_id`).
+- `internal/runner` — backup/restore/verify/prune operations, in-memory locks (per plan, per restore target, per rescan), op logs with secret redaction (destination secrets via `openDest`), `Recover()`. Remote restore/verify download to `<data-dir>/tmp/<op>.artifact` (`fetch`) and checksum before touching the target. `rescan.go`: `Rescan` imports sidecars unknown to this install, `Unlock` stores passphrases of imported encrypted backups. `openStorage`/`newEngine` are test hooks.
 - `internal/schedule` — cron parsing (robfig/cron), `Keep()` retention, scheduler loop. Imported by runner (retention); scheduler calls runner via a callback to avoid an import cycle.
 - `internal/server` — stdlib mux API per `specs/001-db-backup-webui/contracts/api.md`, session auth + `X-Requested-With: dumpling` CSRF header, SSE hub (`/api/events`), SPA serving.
 - `web/` — Vite + React + TS, plain CSS, `react-router` declarative routes; pages in `web/src/pages/`, wrapped in `ErrorBoundary` (keyed by path). API list fields must always be JSON arrays, never `null` (UI maps over them).

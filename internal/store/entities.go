@@ -144,66 +144,6 @@ func mustAffect(res sql.Result) error {
 	return nil
 }
 
-// ---- destinations ----
-
-type Destination struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Path      string  `json:"path"`
-	FreeBytes *uint64 `json:"free_bytes,omitempty"`
-}
-
-func (s *Store) Destinations() ([]Destination, error) {
-	rows, err := s.DB.Query(`SELECT id,name,path FROM destinations ORDER BY name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []Destination{}
-	for rows.Next() {
-		var d Destination
-		if err := rows.Scan(&d.ID, &d.Name, &d.Path); err != nil {
-			return nil, err
-		}
-		out = append(out, d)
-	}
-	return out, rows.Err()
-}
-
-func (s *Store) Destination(id string) (d Destination, err error) {
-	err = wrap(s.DB.QueryRow(`SELECT id,name,path FROM destinations WHERE id=?`, id).Scan(&d.ID, &d.Name, &d.Path))
-	return
-}
-
-func (s *Store) SaveDestination(d *Destination) error {
-	var err error
-	if d.ID == "" {
-		d.ID = NewID()
-		_, err = s.DB.Exec(`INSERT INTO destinations(id,name,path) VALUES(?,?,?)`, d.ID, d.Name, d.Path)
-	} else {
-		var res sql.Result
-		if res, err = s.DB.Exec(`UPDATE destinations SET name=?,path=? WHERE id=?`, d.Name, d.Path, d.ID); err == nil {
-			err = mustAffect(res)
-		}
-	}
-	return wrap(err)
-}
-
-func (s *Store) DeleteDestination(id string) error {
-	var n int
-	s.DB.QueryRow(`SELECT (SELECT count(*) FROM plans WHERE destination_id=?)+
-		(SELECT count(*) FROM backups WHERE destination_id=? AND status<>'deleted')`, id, id).Scan(&n)
-	if n > 0 {
-		return ErrInUse
-	}
-	s.DB.Exec(`DELETE FROM backups WHERE destination_id=? AND status='deleted'`, id)
-	res, err := s.DB.Exec(`DELETE FROM destinations WHERE id=?`, id)
-	if err != nil {
-		return err
-	}
-	return mustAffect(res)
-}
-
 // ---- plans ----
 
 type Retention struct {
@@ -340,14 +280,31 @@ type Backup struct {
 	Status         string `json:"status"`
 	StartedAt      string `json:"started_at"`
 	FinishedAt     string `json:"finished_at"`
+	Imported       bool   `json:"imported"`       // created by a destination rescan
+	OriginPlanID   string `json:"origin_plan_id"` // plan id recorded in the sidecar (imported backups)
+	Locked         bool   `json:"locked"`         // imported, encrypted, passphrase unknown
+	// Set by the API layer:
+	DestinationType string `json:"destination_type"`
+	Location        string `json:"location"`
+
+	passphrase string // decrypted, set by Unlock
 }
 
-const backupCols = `id,COALESCE(operation_id,''),COALESCE(plan_id,''),plan_name,COALESCE(connection_id,''),connection_name,engine,
-	server_version,database,destination_id,path,size_bytes,sha256,encrypted,status,started_at,finished_at`
+// PassphrasePlain returns the passphrase stored by Unlock ("" if none).
+func (b Backup) PassphrasePlain() string { return b.passphrase }
 
-func scanBackup(row interface{ Scan(...any) error }) (b Backup, err error) {
-	err = wrap(row.Scan(&b.ID, &b.OperationID, &b.PlanID, &b.PlanName, &b.ConnectionID, &b.ConnectionName, &b.Engine,
-		&b.ServerVersion, &b.Database, &b.DestinationID, &b.Path, &b.SizeBytes, &b.SHA256, &b.Encrypted, &b.Status, &b.StartedAt, &b.FinishedAt))
+const backupCols = `id,COALESCE(operation_id,''),COALESCE(plan_id,''),plan_name,COALESCE(connection_id,''),connection_name,engine,
+	server_version,database,destination_id,path,size_bytes,sha256,encrypted,status,started_at,finished_at,imported,origin_plan_id,passphrase`
+
+func (s *Store) scanBackup(row interface{ Scan(...any) error }) (b Backup, err error) {
+	var sealed string
+	if err = wrap(row.Scan(&b.ID, &b.OperationID, &b.PlanID, &b.PlanName, &b.ConnectionID, &b.ConnectionName, &b.Engine,
+		&b.ServerVersion, &b.Database, &b.DestinationID, &b.Path, &b.SizeBytes, &b.SHA256, &b.Encrypted, &b.Status, &b.StartedAt,
+		&b.FinishedAt, &b.Imported, &b.OriginPlanID, &sealed)); err != nil {
+		return
+	}
+	b.passphrase, err = s.Box.Open(sealed)
+	b.Locked = b.Imported && b.Encrypted && b.passphrase == ""
 	return
 }
 
@@ -356,21 +313,47 @@ func (s *Store) InsertBackup(b *Backup) error {
 		b.ID = NewID()
 	}
 	_, err := s.DB.Exec(`INSERT INTO backups(id,operation_id,plan_id,plan_name,connection_id,connection_name,engine,server_version,
-		database,destination_id,path,size_bytes,sha256,encrypted,status,started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		database,destination_id,path,size_bytes,sha256,encrypted,status,started_at,finished_at,imported,origin_plan_id)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.ID, null(b.OperationID), null(b.PlanID), b.PlanName, null(b.ConnectionID), b.ConnectionName, b.Engine, b.ServerVersion,
-		b.Database, b.DestinationID, b.Path, b.SizeBytes, b.SHA256, b.Encrypted, b.Status, b.StartedAt, b.FinishedAt)
+		b.Database, b.DestinationID, b.Path, b.SizeBytes, b.SHA256, b.Encrypted, b.Status, b.StartedAt, b.FinishedAt,
+		b.Imported, b.OriginPlanID)
+	b.Locked = b.Imported && b.Encrypted
 	return err
 }
 
 func (s *Store) Backup(id string) (Backup, error) {
-	return scanBackup(s.DB.QueryRow(`SELECT `+backupCols+` FROM backups WHERE id=?`, id))
+	return s.scanBackup(s.DB.QueryRow(`SELECT `+backupCols+` FROM backups WHERE id=?`, id))
 }
 
-type BackupFilter struct{ PlanID, ConnectionID, Database, Status string }
+// BackupByPath returns the non-deleted backup stored at path in a destination.
+func (s *Store) BackupByPath(destID, path string) (Backup, error) {
+	return s.scanBackup(s.DB.QueryRow(`SELECT `+backupCols+` FROM backups WHERE destination_id=? AND path=? AND status<>'deleted'`, destID, path))
+}
+
+// SetBackupPassphrase stores an unlock passphrase sealed at rest.
+func (s *Store) SetBackupPassphrase(id, plain string) error {
+	sealed, err := s.Box.Seal(plain)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.Exec(`UPDATE backups SET passphrase=? WHERE id=?`, sealed, id)
+	return err
+}
+
+// OperationExists reports whether an operation id belongs to this install.
+func (s *Store) OperationExists(id string) bool {
+	var n int
+	s.DB.QueryRow(`SELECT count(*) FROM operations WHERE id=?`, id).Scan(&n)
+	return n > 0
+}
+
+type BackupFilter struct{ PlanID, ConnectionID, Database, Status, DestinationID string }
 
 func (s *Store) Backups(f BackupFilter) ([]Backup, error) {
 	q, args := `SELECT `+backupCols+` FROM backups WHERE 1=1`, []any{}
-	for col, v := range map[string]string{"plan_id": f.PlanID, "connection_id": f.ConnectionID, "database": f.Database, "status": f.Status} {
+	for col, v := range map[string]string{"plan_id": f.PlanID, "connection_id": f.ConnectionID, "database": f.Database,
+		"status": f.Status, "destination_id": f.DestinationID} {
 		if v != "" {
 			q += " AND " + col + "=?"
 			args = append(args, v)
@@ -386,7 +369,7 @@ func (s *Store) Backups(f BackupFilter) ([]Backup, error) {
 	defer rows.Close()
 	out := []Backup{}
 	for rows.Next() {
-		b, err := scanBackup(rows)
+		b, err := s.scanBackup(rows)
 		if err != nil {
 			return nil, err
 		}

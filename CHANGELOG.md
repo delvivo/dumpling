@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- S3-compatible buckets and SFTP servers as backup destinations (feature `002-s3-sftp-destinations`):
+  streaming uploads with atomic, never-overwriting commit; restore and verify download once to a
+  temporary file and check the SHA-256 first; remote retention pruning; destination test with
+  specific failure reasons; write-only, encrypted destination secrets.
+- SFTP host key pinning (fingerprint shown on test, confirmed on save, mismatch refused).
+- Destination rescan (automatic on create) importing backups found on a destination, and unlock of
+  imported encrypted backups with passphrase validation and "apply to same origin".
+- Backup history shows destination type and location; verify distinguishes missing, unreachable
+  and checksum mismatch; deleting a used destination lists the plans and backup count.
+- Startup recovery cleans partial SFTP files, incomplete S3 multipart uploads and temporary downloads.
+- Database schema migrations (`PRAGMA user_version`); backup metadata sidecars record `plan_id`.
+- RustFS (S3) and SFTP test services in `testdata/compose.yaml`; integration round-trip per engine
+  × destination type.
+
+### Changed
+
+- A prune whose deletions partly fail now ends with status `warning` (was `failed`), also for local
+  destinations; the backups that could not be deleted stay in history.
+
 - Web UI and API for hot backup and restore of PostgreSQL, MySQL and SQL Server databases
   (feature `001-db-backup-webui`).
 - Connections with test, database listing and client-tool detection; filesystem destinations.
