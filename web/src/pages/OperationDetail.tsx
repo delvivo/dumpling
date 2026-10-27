@@ -28,11 +28,11 @@ export default function OperationDetail() {
 
   useEffect(() => { pre.current?.scrollTo(0, pre.current.scrollHeight); }, [log]);
 
-  if (error) return <p className="error">{error}</p>;
+  if (error) return <p className="error" role="alert">{error}</p>;
   if (!op) return <p>Loading…</p>;
   return (
     <>
-      <h1>{op.type} <span className={`status ${op.status}`}>{op.status}</span></h1>
+      <h1>{op.type} <span className={`status ${op.status}`} aria-live="polite">{op.status}</span></h1>
       <div className="card">
         <div className="row">
           <div><div className="muted">Created</div>{when(op.created_at)}</div>

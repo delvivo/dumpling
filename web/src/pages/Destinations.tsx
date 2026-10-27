@@ -52,7 +52,7 @@ export default function Destinations() {
   return (
     <>
       <h1>Destinations <button className="primary" onClick={() => { setEdit(blank()); setNotice(""); }}>Add destination</button></h1>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
       {notice && <p className="card">{notice}</p>}
       {edit && <DestinationForm key={edit.id || "new"} initial={edit} onDone={(n) => { setEdit(null); if (n) setNotice(n); load(); }} />}
       <table>
@@ -202,7 +202,7 @@ function DestinationForm({ initial, onDone }: { initial: Destination; onDone: (n
           )}
         </div>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
       <div className="actions">
         <button className="primary" disabled={busy || needsPin} title={needsPin ? "Test and trust the server host key first" : undefined}>Save</button>
         {d.type !== "local" && <button type="button" onClick={test} disabled={busy}>Test</button>}

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { bytes, del, get, post, when } from "../api";
 import { useEvents } from "../events";
 import type { Backup, Connection, Destination, Operation } from "../types";
+import Modal from "../Modal";
 import RestoreWizard from "./RestoreWizard";
 
 type Tools = Record<string, { version: string; variant?: string } | null>;
@@ -63,16 +64,18 @@ export default function Backups() {
       <h1>Backups <button className="primary" onClick={() => setShowNew(true)} disabled={!conns.length || !dests.length}>Backup now</button></h1>
       {missing.length > 0 && <p className="warn banner">Missing or unsupported client tools on this host: {missing.join(", ")}. Backups for those engines will fail.</p>}
       {(!conns.length || !dests.length) && <p className="muted">Add a <Link to="/connections">connection</Link> and a <Link to="/destinations">destination</Link> first.</p>}
-      {error && <p className="error">{error}</p>}
-      {Object.values(running).map((o) => (
-        <p key={o.id} className="card">⏳ {o.type} {o.database} — <span className={`status ${o.status}`}>{o.status}</span> <Link to={`/operations/${o.id}`}>log</Link></p>
-      ))}
+      {error && <p className="error" role="alert">{error}</p>}
+      <div aria-live="polite">
+        {Object.values(running).map((o) => (
+          <p key={o.id} className="card">⏳ {o.type} {o.database} — <span className={`status ${o.status}`}>{o.status}</span> <Link to={`/operations/${o.id}`}>log</Link></p>
+        ))}
+      </div>
       <div className="filters">
-        <select value={filter.connection_id} onChange={(e) => setFilter({ ...filter, connection_id: e.target.value })}>
+        <select aria-label="Connection" value={filter.connection_id} onChange={(e) => setFilter({ ...filter, connection_id: e.target.value })}>
           <option value="">All connections</option>
           {conns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })}>
+        <select aria-label="Status" value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })}>
           <option value="">ok + corrupted</option>
           <option value="ok">ok</option>
           <option value="corrupted">corrupted</option>
@@ -102,7 +105,7 @@ export default function Backups() {
           {!list.length && <tr><td colSpan={8} className="muted">No backups.</td></tr>}
         </tbody>
       </table>
-      {showNew && <NewBackup conns={conns} dests={dests} onClose={() => setShowNew(false)} onError={setError} />}
+      {showNew && <NewBackup conns={conns} dests={dests} onClose={() => setShowNew(false)} />}
       {restore && <RestoreWizard backup={restore} onClose={() => setRestore(null)} />}
       {unlock && <UnlockDialog backup={unlock} onClose={() => { setUnlock(null); load(); }} />}
     </>
@@ -130,7 +133,7 @@ function UnlockDialog({ backup, onClose }: { backup: Backup; onClose: () => void
   };
 
   return (
-    <dialog open>
+    <Modal onClose={onClose}>
       <form onSubmit={submit}>
         <h2>Unlock imported backup</h2>
         <p className="muted">{backup.connection_name || "?"} / {backup.database} — {new Date(backup.started_at).toLocaleString()}{backup.plan_name && ` (plan ${backup.plan_name})`}</p>
@@ -138,7 +141,7 @@ function UnlockDialog({ backup, onClose }: { backup: Backup; onClose: () => void
           <>
             <label>Passphrase<input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} required autoComplete="off" /></label>
             <label className="inline"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Apply to all locked backups of the same origin</label>
-            {error && <p className="error">{error}</p>}
+            {error && <p className="error" role="alert">{error}</p>}
             <div className="actions">
               <button className="primary" disabled={busy}>Unlock</button>
               <button type="button" onClick={onClose}>Cancel</button>
@@ -151,18 +154,22 @@ function UnlockDialog({ backup, onClose }: { backup: Backup; onClose: () => void
           </>
         )}
       </form>
-    </dialog>
+    </Modal>
   );
 }
 
-function NewBackup({ conns, dests, onClose, onError }: { conns: Connection[]; dests: Destination[]; onClose: () => void; onError: (s: string) => void }) {
+function NewBackup({ conns, dests, onClose }: { conns: Connection[]; dests: Destination[]; onClose: () => void }) {
   const [connId, setConnId] = useState(conns[0]?.id ?? "");
   const [destId, setDestId] = useState(dests[0]?.id ?? "");
   const [dbs, setDbs] = useState<string[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [encrypt, setEncrypt] = useState(false);
   const [passphrase, setPassphrase] = useState("");
+  const [repeat, setRepeat] = useState("");
   const [err, setErr] = useState("");
+  const [submitErr, setSubmitErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const mismatch = encrypt && repeat !== passphrase;
 
   useEffect(() => {
     setDbs(null);
@@ -173,24 +180,25 @@ function NewBackup({ conns, dests, onClose, onError }: { conns: Connection[]; de
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitErr(""); setBusy(true);
     try {
       await post("/backups", { connection_id: connId, databases: picked, destination_id: destId, passphrase: encrypt ? passphrase : "" });
       onClose();
     } catch (er: any) {
-      onError(er.message);
-      onClose();
+      setSubmitErr(er.message);
+      setBusy(false);
     }
   };
 
   return (
-    <dialog open>
+    <Modal onClose={onClose}>
       <form onSubmit={submit}>
         <h2>Backup now</h2>
         <label>Connection<select value={connId} onChange={(e) => setConnId(e.target.value)}>{conns.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.engine})</option>)}</select></label>
         <fieldset>
           <legend>Databases</legend>
           {dbs === null && <span className="muted">Loading…</span>}
-          {err && <span className="error">{err}</span>}
+          {err && <span className="error" role="alert">{err}</span>}
           {dbs?.map((d) => (
             <label key={d} className="inline">
               <input type="checkbox" checked={picked.includes(d)} onChange={(e) => setPicked(e.target.checked ? [...picked, d] : picked.filter((x) => x !== d))} />{d}
@@ -201,15 +209,20 @@ function NewBackup({ conns, dests, onClose, onError }: { conns: Connection[]; de
         <label className="inline"><input type="checkbox" checked={encrypt} onChange={(e) => setEncrypt(e.target.checked)} /> Encrypt with passphrase</label>
         {encrypt && (
           <>
-            <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} required autoComplete="new-password" placeholder="Passphrase" />
+            <div className="row">
+              <label>Passphrase<input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} required autoComplete="new-password" /></label>
+              <label>Repeat passphrase<input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} required autoComplete="new-password" /></label>
+            </div>
+            {mismatch && repeat && <p className="error" role="alert">Passphrases don't match.</p>}
             <p className="warn">The passphrase is not stored for on-demand backups. Losing it makes the backup unrecoverable.</p>
           </>
         )}
+        {submitErr && <p className="error" role="alert">{submitErr}</p>}
         <div className="actions">
-          <button className="primary" disabled={!picked.length}>Start backup</button>
+          <button className="primary" disabled={!picked.length || mismatch || busy}>{busy ? "Starting…" : "Start backup"}</button>
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </dialog>
+    </Modal>
   );
 }

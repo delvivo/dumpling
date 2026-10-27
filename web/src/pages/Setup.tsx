@@ -26,7 +26,7 @@ export default function Setup({ onDone }: { onDone: () => void }) {
         <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} required maxLength={64} /></label>
         <label>Password (8–72 chars)<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} maxLength={72} /></label>
         <label>Confirm password<input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required /></label>
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
         <button className="primary">Create account</button>
       </form>
     </main>

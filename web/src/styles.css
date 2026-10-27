@@ -46,3 +46,4 @@ dialog form { border: 0; }
 pre.log { background: #0c0a09; color: #e7e5e4; padding: 1rem; border-radius: 8px; overflow: auto; max-height: 60vh; font-size: .85rem; }
 .filters { display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; }
 code { font-size: .85em; }
+td code { overflow-wrap: anywhere; }

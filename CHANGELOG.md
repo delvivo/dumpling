@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RustFS (S3) and SFTP test services in `testdata/compose.yaml`; integration round-trip per engine
   × destination type.
 
+### Fixed
+
+- Dialogs (Backup now, Restore, Unlock) open as real modals: centered with backdrop instead of below
+  the table, Esc closes, focus moves inside and returns to the opener.
+- Encryption passphrases (on-demand backup, plan) must be typed twice; mismatch blocks submit.
+- Backup now keeps the dialog and its input open on error; Backup now and Save plan can't be
+  double-submitted.
+- Accessibility: labelled passphrase fields, named filter selects, errors announced
+  (`role="alert"`), running operations and operation status announced (`aria-live`); long
+  locations in tables wrap instead of widening the page.
+
 ### Changed
 
 - A prune whose deletions partly fail now ends with status `warning` (was `failed`), also for local

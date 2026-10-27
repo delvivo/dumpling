@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { ApiError, get, post } from "../api";
+import Modal from "../Modal";
 import { canRestore } from "../restoreGate";
 import type { Backup, Connection } from "../types";
 
@@ -57,7 +58,7 @@ export default function RestoreWizard({ backup, onClose }: { backup: Backup; onC
   };
 
   return (
-    <dialog open>
+    <Modal onClose={onClose}>
       <form onSubmit={submit}>
         <h2>Restore backup</h2>
         <p className="muted">{backup.connection_name} / {backup.database} — {new Date(backup.started_at).toLocaleString()} ({backup.engine} {backup.server_version})</p>
@@ -69,7 +70,7 @@ export default function RestoreWizard({ backup, onClose }: { backup: Backup; onC
             {targets.map((c) => <option key={c.id} value={c.id}>{c.name} — {c.host}:{c.port}</option>)}
           </select>
         </label>
-        {!targets.length && <p className="error">No {backup.engine} connection available as target.</p>}
+        {!targets.length && <p className="error" role="alert">No {backup.engine} connection available as target.</p>}
         <label>Target database name<input value={database} onChange={(e) => setDatabase(e.target.value)} required /></label>
         {pf?.version_warning && <p className="warn">{pf.version_warning}</p>}
         {pf?.passphrase_required && (
@@ -88,7 +89,7 @@ export default function RestoreWizard({ backup, onClose }: { backup: Backup; onC
             <label>Type <code>{database}</code> to confirm<input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" /></label>
           </div>
         ) : pf && <p className="muted">A new database “{database}” will be created.</p>}
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
         <div className="actions">
           <button className={pf?.target_exists ? "danger" : "primary"} disabled={!ok || busy}>
             {pf?.target_exists ? "Overwrite and restore" : "Restore"}
@@ -96,6 +97,6 @@ export default function RestoreWizard({ backup, onClose }: { backup: Backup; onC
           <button type="button" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </dialog>
+    </Modal>
   );
 }

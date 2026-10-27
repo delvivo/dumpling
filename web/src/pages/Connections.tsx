@@ -69,7 +69,7 @@ export default function Connections() {
   return (
     <>
       <h1>Connections <button className="primary" onClick={() => { setEdit(empty()); setTest(null); }}>Add connection</button></h1>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
       {edit && (
         <form onSubmit={save} style={{ marginBottom: "1.5rem" }}>
           <div className="row">

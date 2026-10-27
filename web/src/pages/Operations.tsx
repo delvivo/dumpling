@@ -45,8 +45,8 @@ export default function Operations() {
 
   const loadMore = () => query(ops[ops.length - 1]?.id).then((o) => { setOps([...ops, ...o]); setMore(o.length === 50); });
   const name = (id: string) => conns.find((c) => c.id === id)?.name ?? (id ? "(deleted)" : "");
-  const sel = (k: keyof typeof filter, label: string, opts: [string, string][]) => (
-    <select value={filter[k]} onChange={(e) => setFilter({ ...filter, [k]: e.target.value })}>
+  const sel = (k: keyof typeof filter, name: string, label: string, opts: [string, string][]) => (
+    <select aria-label={name} value={filter[k]} onChange={(e) => setFilter({ ...filter, [k]: e.target.value })}>
       <option value="">{label}</option>
       {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
     </select>
@@ -55,12 +55,12 @@ export default function Operations() {
   return (
     <>
       <h1>Operations</h1>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
       <div className="filters">
-        {sel("type", "All types", types.map((t) => [t, t]))}
-        {sel("status", "All statuses", statuses.map((s) => [s, s]))}
-        {sel("plan_id", "All plans", plans.map((p) => [p.id, p.name]))}
-        {sel("connection_id", "All connections", conns.map((c) => [c.id, c.name]))}
+        {sel("type", "Type", "All types", types.map((t) => [t, t]))}
+        {sel("status", "Status", "All statuses", statuses.map((s) => [s, s]))}
+        {sel("plan_id", "Plan", "All plans", plans.map((p) => [p.id, p.name]))}
+        {sel("connection_id", "Connection", "All connections", conns.map((c) => [c.id, c.name]))}
       </div>
       <table>
         <thead><tr><th>Created</th><th>Type</th><th>Status</th><th>Subject</th><th>Message</th></tr></thead>

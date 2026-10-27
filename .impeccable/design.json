@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-27T00:00:00Z",
+  "title": "Design System: Dumpling",
+  "extensions": {
+    "colorMeta": {
+      "rice-paper": { "role": "neutral", "displayName": "Rice Paper", "canonical": "#fafaf9", "tonalRamp": ["#1c1917", "#292524", "#44403c", "#57534e", "#78716c", "#a8a29e", "#e7e5e4", "#fafaf9"] },
+      "soy-ink": { "role": "neutral", "displayName": "Soy Ink", "canonical": "#1c1917", "tonalRamp": ["#1c1917", "#292524", "#44403c", "#57534e", "#78716c", "#a8a29e", "#e7e5e4", "#fafaf9"] },
+      "steam-grey": { "role": "neutral", "displayName": "Steam Grey", "canonical": "#78716c", "tonalRamp": ["#1c1917", "#292524", "#44403c", "#57534e", "#78716c", "#a8a29e", "#e7e5e4", "#fafaf9"] },
+      "basket-line": { "role": "neutral", "displayName": "Basket Line", "canonical": "#e7e5e4", "tonalRamp": ["#1c1917", "#292524", "#44403c", "#57534e", "#78716c", "#a8a29e", "#e7e5e4", "#fafaf9"] },
+      "wrapper-white": { "role": "neutral", "displayName": "Wrapper White", "canonical": "#ffffff" },
+      "fried-wrapper-amber": { "role": "primary", "displayName": "Fried-Wrapper Amber", "canonical": "#b45309", "tonalRamp": ["#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fcd34d", "#fde68a"] },
+      "fried-wrapper-amber-night": { "role": "primary", "displayName": "Fried-Wrapper Amber (dark mode)", "canonical": "#f59e0b", "tonalRamp": ["#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fcd34d", "#fde68a"] },
+      "chili-red": { "role": "semantic", "displayName": "Chili Red", "canonical": "#b91c1c", "tonalRamp": ["#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca"] },
+      "scallion-green": { "role": "semantic", "displayName": "Scallion Green", "canonical": "#15803d", "tonalRamp": ["#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#bbf7d0"] },
+      "mustard": { "role": "semantic", "displayName": "Mustard", "canonical": "#a16207", "tonalRamp": ["#713f12", "#854d0e", "#a16207", "#ca8a04", "#eab308", "#facc15", "#fde047", "#fef08a"] },
+      "night-steam": { "role": "neutral", "displayName": "Night Steam (dark text)", "canonical": "#f5f5f4" },
+      "night-grey": { "role": "neutral", "displayName": "Night Grey (dark muted)", "canonical": "#a8a29e" },
+      "night-line": { "role": "neutral", "displayName": "Night Line (dark border)", "canonical": "#44403c" },
+      "night-tray": { "role": "neutral", "displayName": "Night Tray (dark card)", "canonical": "#292524" },
+      "terminal-black": { "role": "neutral", "displayName": "Terminal Black", "canonical": "#0c0a09" }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "One page title per screen, can carry actions inline." },
+      "body": { "displayName": "Body", "purpose": "Tables, form values, prose." },
+      "label": { "displayName": "Label", "purpose": "Form labels stacked above controls." },
+      "table-header": { "displayName": "Table Header", "purpose": "Column headings in Steam Grey." },
+      "status": { "displayName": "Status", "purpose": "Status pill text." },
+      "log": { "displayName": "Log", "purpose": "Operation log and inline code." }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action a form or dialog exists for.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Back up now</button>",
+      "css": ".ds-btn { font: inherit; padding: .4rem .8rem; border: 1px solid var(--line, #e7e5e4); border-radius: 6px; background: var(--card, #fff); color: var(--fg, #1c1917); cursor: pointer; } .ds-btn-primary { background: var(--accent, #b45309); color: #fff; border-color: var(--accent, #b45309); } .ds-btn:focus-visible { outline: 2px solid var(--accent, #b45309); outline-offset: 2px; } .ds-btn:disabled { opacity: .5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Secondary actions: Test, Edit, Verify.",
+      "html": "<button class=\"ds-btn\">Test connection</button>",
+      "css": ".ds-btn { font: inherit; padding: .4rem .8rem; border: 1px solid var(--line, #e7e5e4); border-radius: 6px; background: var(--card, #fff); color: var(--fg, #1c1917); cursor: pointer; } .ds-btn:focus-visible { outline: 2px solid var(--accent, #b45309); outline-offset: 2px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive confirmation, e.g. overwrite restore or delete.",
+      "html": "<button class=\"ds-btn ds-btn-danger\">Restore and overwrite</button>",
+      "css": ".ds-btn { font: inherit; padding: .4rem .8rem; border: 1px solid var(--line, #e7e5e4); border-radius: 6px; cursor: pointer; } .ds-btn-danger { background: var(--danger, #b91c1c); color: #fff; border-color: var(--danger, #b91c1c); } .ds-btn:focus-visible { outline: 2px solid var(--danger, #b91c1c); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Stacked label above a recessed rice-paper field.",
+      "html": "<label class=\"ds-label\">Host<input class=\"ds-input\" value=\"pg-a\"></label>",
+      "css": ".ds-label { display: grid; gap: .25rem; font-size: .9rem; color: var(--fg, #1c1917); } .ds-input { font: inherit; font-size: 15px; padding: .4rem .5rem; border: 1px solid var(--line, #e7e5e4); border-radius: 6px; background: var(--bg, #fafaf9); color: var(--fg, #1c1917); } .ds-input:focus-visible { outline: 2px solid var(--accent, #b45309); outline-offset: 1px; }"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "Top bar: brand, sections, user and log out.",
+      "html": "<nav class=\"ds-nav\"><strong>🥟 Dumpling</strong><a href=\"#\" class=\"active\">Backups</a><a href=\"#\">Plans</a><a href=\"#\">Operations</a><span class=\"ds-spacer\"></span><span class=\"ds-muted\">admin</span></nav>",
+      "css": ".ds-nav { display: flex; gap: 1rem; align-items: center; padding: .75rem 1.5rem; border-bottom: 1px solid var(--line, #e7e5e4); background: var(--card, #fff); flex-wrap: wrap; } .ds-nav strong { margin-right: 1rem; } .ds-nav a { color: var(--fg, #1c1917); text-decoration: none; padding: .25rem 0; } .ds-nav a.active { color: var(--accent, #b45309); border-bottom: 2px solid var(--accent, #b45309); } .ds-nav a:hover { color: var(--accent, #b45309); } .ds-spacer { flex: 1; } .ds-muted { color: var(--muted, #78716c); }"
+    },
+    {
+      "name": "Status Pills",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "Outline pills, color fixed by outcome.",
+      "html": "<span class=\"ds-status ds-ok\">success</span> <span class=\"ds-status ds-warn\">skipped</span> <span class=\"ds-status ds-fail\">failed</span> <span class=\"ds-status ds-run\">running</span>",
+      "css": ".ds-status { font-size: .8rem; padding: .1rem .45rem; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; } .ds-ok { color: var(--ok, #15803d); } .ds-warn { color: var(--warn, #a16207); } .ds-fail { color: var(--danger, #b91c1c); } .ds-run { color: var(--accent, #b45309); }"
+    },
+    {
+      "name": "Tray",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat bordered white tray; forms share it.",
+      "html": "<div class=\"ds-card\"><strong>Nightly prod</strong><span class=\"ds-muted\">0 3 * * * · keep 7 daily</span></div>",
+      "css": ".ds-card { background: var(--card, #fff); border: 1px solid var(--line, #e7e5e4); border-radius: 8px; padding: 1rem; display: grid; gap: .75rem; color: var(--fg, #1c1917); } .ds-muted { color: var(--muted, #78716c); }"
+    },
+    {
+      "name": "Warning Banner",
+      "kind": "custom",
+      "description": "Engine limitations and insecure-bind notices.",
+      "html": "<div class=\"ds-warn-banner\">MyISAM tables are not dumped consistently.</div>",
+      "css": ".ds-warn-banner { color: var(--warn, #a16207); background: color-mix(in srgb, var(--warn, #a16207) 10%, transparent); padding: .5rem .75rem; border-radius: 6px; }"
+    },
+    {
+      "name": "Operation Log",
+      "kind": "custom",
+      "refersTo": "log",
+      "description": "Always-dark terminal panel for live operation output.",
+      "html": "<pre class=\"ds-log\">pg_dump: dumping contents of table public.orders\nsha256 3f1a…c9 ok\nbackup finished in 12.4s</pre>",
+      "css": ".ds-log { background: #0c0a09; color: #e7e5e4; padding: 1rem; border-radius: 8px; overflow: auto; max-height: 60vh; font-size: .85rem; margin: 0; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Steamer Basket",
+    "overview": "Dumpling is a stack of plain trays. Every surface is a flat white tray on warm rice paper, edged by a thin stone line, holding exactly what it says it holds: a table of backups, a form, a log. Nothing is hidden under decoration, and nothing floats. The one warm note is the amber of a pan-fried wrapper, reserved for the action you came to take and for where you are.\n\nThe system is deliberately small: one stylesheet (`web/src/styles.css`), nine color tokens, the platform's own font, and a handful of utility classes. Density is that of an operator's tool, compact tables and forms at a 15px base, readable on a weekly check-in and calm during a restore. Status lives in color-coded outline pills; failures are red and plain, never softened.\n\nDark mode follows the OS (`prefers-color-scheme`) and flips the trays to warm charcoal while the amber brightens. The live operation log is always a dark terminal, in both themes.",
+    "keyCharacteristics": [
+      "Flat trays on warm paper; 1px stone borders carry all structure.",
+      "Single accent (amber) for primary action, active nav, links and running states.",
+      "System font stack only; no web fonts.",
+      "Outline status pills color-coded by outcome.",
+      "Native elements styled lightly (`<dialog>`, `<table>`, form controls), not replaced."
+    ],
+    "rules": [
+      { "name": "The One Warm Note Rule", "body": "Amber is the only accent. It marks the primary action, the current location and work in progress; it never decorates.", "section": "colors" },
+      { "name": "The Outcome Color Rule", "body": "Red, green and mustard mean failed, succeeded and needs attention. Never use them for anything else.", "section": "colors" },
+      { "name": "The Native Voice Rule", "body": "No web fonts. Hierarchy comes from size, weight and Steam Grey, not from a second family.", "section": "typography" },
+      { "name": "The No-Lift Rule", "body": "Trays sit flat. If something needs to stand apart, give it a border or a tonal step, never a shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep everything in `web/src/styles.css` with tokens as `:root` custom properties; add a dark value in the `prefers-color-scheme` block for any new neutral.",
+      "Do build screens from the existing trays, tables, stacked labels and `.row` grid before inventing a layout.",
+      "Do use the native `<dialog>` for confirmations, with a Danger button for destructive ones.",
+      "Do show outcomes with the status pill vocabulary and its fixed color mapping."
+    ],
+    "donts": [
+      "Don't add shadows, gradients or a second accent color (The No-Lift and One Warm Note rules).",
+      "Don't load web fonts or an icon font; the 🥟 emoji is the only mark.",
+      "Don't use red, green or mustard decoratively.",
+      "Don't add a UI component library; the plain CSS approach is part of the single-binary constraint."
+    ]
+  }
+}

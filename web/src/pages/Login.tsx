@@ -22,7 +22,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
         <h1>🥟 Dumpling</h1>
         <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required /></label>
         <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
         <button className="primary">Log in</button>
       </form>
     </main>

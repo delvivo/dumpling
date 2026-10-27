@@ -38,7 +38,7 @@ export default function Plans() {
   return (
     <>
       <h1>Plans <button className="primary" onClick={() => setEdit({ ...empty(), connection_id: conns[0]?.id ?? "", destination_id: dests[0]?.id ?? "" })} disabled={!conns.length || !dests.length}>Add plan</button></h1>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
       {edit && <PlanForm plan={edit} conns={conns} dests={dests} onDone={() => { setEdit(null); load(); }} onCancel={() => setEdit(null)} />}
       <table>
         <thead><tr><th>Name</th><th>Source</th><th>Schedule</th><th>Next run</th><th>Last run</th><th /></tr></thead>
@@ -71,7 +71,10 @@ function PlanForm({ plan, conns, dests, onDone, onCancel }: { plan: Plan; conns:
   const [dbs, setDbs] = useState<string[]>(plan.databases);
   const [encMode, setEncMode] = useState<"keep" | "set" | "none">(plan.encrypted ? "keep" : "none");
   const [passphrase, setPassphrase] = useState("");
+  const [repeat, setRepeat] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const mismatch = encMode === "set" && repeat !== passphrase;
 
   useEffect(() => {
     if (!p.connection_id) return;
@@ -90,12 +93,14 @@ function PlanForm({ plan, conns, dests, onDone, onCancel }: { plan: Plan; conns:
     };
     if (encMode === "set") body.passphrase = passphrase;
     if (encMode === "none" && plan.encrypted) body.passphrase = "";
+    setBusy(true);
     try {
       if (p.id) await put(`/plans/${p.id}`, body);
       else await post("/plans", body);
       onDone();
     } catch (err: any) {
       setError(err.message);
+      setBusy(false);
     }
   };
 
@@ -145,14 +150,18 @@ function PlanForm({ plan, conns, dests, onDone, onCancel }: { plan: Plan; conns:
         <label className="inline"><input type="radio" checked={encMode === "set"} onChange={() => setEncMode("set")} /> {plan.encrypted ? "Change passphrase (future backups)" : "Encrypt with passphrase"}</label>
         <label className="inline"><input type="radio" checked={encMode === "none"} onChange={() => setEncMode("none")} /> No encryption{plan.encrypted && " (future backups)"}</label>
         {encMode === "set" && <>
-          <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} required autoComplete="new-password" placeholder="Passphrase" />
+          <div className="row">
+            <label>Passphrase<input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} required autoComplete="new-password" /></label>
+            <label>Repeat passphrase<input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} required autoComplete="new-password" /></label>
+          </div>
+          {mismatch && repeat && <p className="error" role="alert">Passphrases don't match.</p>}
           <p className="warn">Stored encrypted so scheduled runs work unattended. Keep a copy elsewhere: losing it (e.g. by deleting the plan) makes its backups unrecoverable.</p>
         </>}
       </fieldset>
       <label className="inline"><input type="checkbox" checked={p.paused} onChange={(e) => setP({ ...p, paused: e.target.checked })} /> Paused</label>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
       <div className="actions">
-        <button className="primary" disabled={!p.databases.length}>Save plan</button>
+        <button className="primary" disabled={!p.databases.length || mismatch || busy}>{busy ? "Saving…" : "Save plan"}</button>
         <button type="button" onClick={onCancel}>Cancel</button>
       </div>
     </form>
