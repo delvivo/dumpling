@@ -4,10 +4,12 @@ package engine
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -133,10 +135,13 @@ func run(ctx context.Context, name string, args, env []string, stdin io.Reader, 
 		cmd.Stderr = &tailBuf{b: &errBuf}
 	}
 	if err := cmd.Run(); err != nil {
-		if msg := strings.TrimSpace(errBuf.String()); msg != "" {
-			return fmt.Errorf("%s: %s", name, msg)
+		tool := filepath.Base(name)
+		if msg := strings.TrimSpace(errBuf.String()); strings.HasPrefix(msg, tool+":") {
+			return errors.New(msg) // tools already prefix their messages ("psql: error: …")
+		} else if msg != "" {
+			return fmt.Errorf("%s: %s", tool, msg)
 		}
-		return fmt.Errorf("%s: %w", name, err)
+		return fmt.Errorf("%s: %w", tool, err)
 	}
 	return nil
 }

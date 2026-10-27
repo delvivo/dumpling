@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes } from "react-router";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router";
+import ErrorBoundary from "./ErrorBoundary";
 import { get, post } from "./api";
 import Setup from "./pages/Setup";
 import Login from "./pages/Login";
@@ -15,6 +16,7 @@ type State = "loading" | "setup" | "login" | "ready";
 export default function App() {
   const [state, setState] = useState<State>("loading");
   const [user, setUser] = useState("");
+  const location = useLocation();
 
   const check = async () => {
     try {
@@ -53,16 +55,18 @@ export default function App() {
         <button className="link" onClick={async () => { await post("/logout"); setState("login"); }}>Log out</button>
       </nav>
       <main>
-        <Routes>
-          <Route path="/" element={<Navigate to="/backups" replace />} />
-          <Route path="/backups" element={<Backups />} />
-          <Route path="/plans" element={<Plans />} />
-          <Route path="/operations" element={<Operations />} />
-          <Route path="/operations/:id" element={<OperationDetail />} />
-          <Route path="/connections" element={<Connections />} />
-          <Route path="/destinations" element={<Destinations />} />
-          <Route path="*" element={<Navigate to="/backups" replace />} />
-        </Routes>
+        <ErrorBoundary key={location.pathname}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/backups" replace />} />
+            <Route path="/backups" element={<Backups />} />
+            <Route path="/plans" element={<Plans />} />
+            <Route path="/operations" element={<Operations />} />
+            <Route path="/operations/:id" element={<OperationDetail />} />
+            <Route path="/connections" element={<Connections />} />
+            <Route path="/destinations" element={<Destinations />} />
+            <Route path="*" element={<Navigate to="/backups" replace />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   );

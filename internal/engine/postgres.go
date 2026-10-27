@@ -44,7 +44,7 @@ func (postgres) sql(ctx context.Context, c Conn, query string, vars map[string]s
 }
 
 func (p postgres) Test(ctx context.Context, c Conn) (TestResult, error) {
-	var r TestResult
+	r := TestResult{Databases: []string{}, Warnings: []string{}}
 	out, err := p.sql(ctx, c, "SHOW server_version;\nSELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY 1;\n", nil)
 	if err != nil {
 		return r, err
@@ -53,7 +53,7 @@ func (p postgres) Test(ctx context.Context, c Conn) (TestResult, error) {
 	if len(l) == 0 {
 		return r, fmt.Errorf("psql: unexpected empty output")
 	}
-	r.Version, r.Databases, r.Warnings = strings.Fields(l[0])[0], l[1:], []string{}
+	r.Version, r.Databases = strings.Fields(l[0])[0], l[1:]
 	for _, tool := range []string{"pg_dump", "pg_restore"} {
 		if t := detect(tool); t == nil {
 			r.Warnings = append(r.Warnings, tool+" not found on PATH")

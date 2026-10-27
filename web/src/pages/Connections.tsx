@@ -104,8 +104,8 @@ export default function Connections() {
           )}
           {test && (
             <div className={test.ok ? "card" : "card error"}>
-              {test.ok ? <>✅ Connected — server {test.server_version}. Databases: {test.databases.join(", ") || "none"}</> : <>❌ {test.error}</>}
-              {test.warnings.map((w) => <div key={w} className="warn">{w}</div>)}
+              {test.ok ? <>✅ Connected — server {test.server_version}. Databases: {(test.databases ?? []).join(", ") || "none"}</> : <>❌ {test.error}</>}
+              {(test.warnings ?? []).map((w) => <div key={w} className="warn">{w}</div>)}
             </div>
           )}
           <div className="actions">

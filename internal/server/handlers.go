@@ -152,13 +152,21 @@ func (s *Server) testConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.test(r.Context(), c)
 	if err != nil {
-		writeJSON(w, 200, map[string]any{"ok": false, "error": redact(err.Error(), c.Password), "databases": []string{}, "warnings": res.Warnings})
+		writeJSON(w, 200, map[string]any{"ok": false, "error": redact(err.Error(), c.Password), "databases": []string{}, "warnings": nonNil(res.Warnings)})
 		return
 	}
 	if c.ID != "" {
 		s.St.SetConnectionVersion(c.ID, res.Version)
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "server_version": res.Version, "databases": res.Databases, "warnings": res.Warnings})
+	writeJSON(w, 200, map[string]any{"ok": true, "server_version": res.Version, "databases": nonNil(res.Databases), "warnings": nonNil(res.Warnings)})
+}
+
+// nonNil keeps the API contract "always an array": a nil slice would encode as null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func (s *Server) test(ctx context.Context, c store.Connection) (engine.TestResult, error) {

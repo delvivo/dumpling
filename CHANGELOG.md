@@ -31,3 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Time zones (`TZ`, `CRON_TZ=` in plan schedules) now work in images without tzdata: zoneinfo is
   embedded in the binary.
+- Blank page when a PostgreSQL connection test failed (wrong host or credentials): the API returned
+  `warnings: null` and the UI crashed while rendering it. The API now always returns arrays, and an
+  error boundary shows render errors instead of a blank page.
+- Client tool errors are no longer double-prefixed (`psql: psql: error: …`).

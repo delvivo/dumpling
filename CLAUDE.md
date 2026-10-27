@@ -35,7 +35,7 @@ On Git Bash, `docker run -v` paths need `MSYS_NO_PATHCONV=1`.
 - `internal/runner` — backup/restore/verify/prune operations, in-memory locks (per plan, per restore target), op logs with secret redaction, `Recover()`. Restore validates then checksums before touching the target.
 - `internal/schedule` — cron parsing (robfig/cron), `Keep()` retention, scheduler loop. Imported by runner (retention); scheduler calls runner via a callback to avoid an import cycle.
 - `internal/server` — stdlib mux API per `specs/001-db-backup-webui/contracts/api.md`, session auth + `X-Requested-With: dumpling` CSRF header, SSE hub (`/api/events`), SPA serving.
-- `web/` — Vite + React + TS, plain CSS, `react-router` declarative routes; pages in `web/src/pages/`.
+- `web/` — Vite + React + TS, plain CSS, `react-router` declarative routes; pages in `web/src/pages/`, wrapped in `ErrorBoundary` (keyed by path). API list fields must always be JSON arrays, never `null` (UI maps over them).
 
 ## Handling change requests (mandatory)
 

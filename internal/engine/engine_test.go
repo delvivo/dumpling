@@ -1,7 +1,11 @@
 package engine
 
 import (
+	"context"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -81,5 +85,23 @@ func TestMajor(t *testing.T) {
 		if Major(v) != want {
 			t.Fatalf("%q → %d", v, Major(v))
 		}
+	}
+}
+
+// TestHelperProcess is not a real test: run() re-executes the test binary as a fake tool.
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("DUMPLING_HELPER") != "1" {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "%s: error: boom\n", filepath.Base(os.Args[0]))
+	os.Exit(2)
+}
+
+func TestRunErrorHasSinglePrefix(t *testing.T) {
+	t.Setenv("DUMPLING_HELPER", "1")
+	err := run(context.Background(), os.Args[0], []string{"-test.run=TestHelperProcess"}, nil, nil, io.Discard, nil)
+	name := filepath.Base(os.Args[0])
+	if err == nil || err.Error() != name+": error: boom" {
+		t.Fatalf("got %q", err)
 	}
 }
