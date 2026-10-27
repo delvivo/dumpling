@@ -54,7 +54,7 @@ export default function Plans() {
                 <button onClick={() => act(() => post(`/plans/${p.id}/run`))}>Run now</button>
                 <button onClick={() => act(() => post(`/plans/${p.id}/${p.paused ? "resume" : "pause"}`))}>{p.paused ? "Resume" : "Pause"}</button>
                 <button onClick={() => setEdit(p)}>Edit</button>
-                <button onClick={() => remove(p)}>Delete</button>
+                <button className="subtle-danger" onClick={() => remove(p)}>Delete</button>
               </td>
             </tr>
           ))}

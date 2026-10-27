@@ -96,9 +96,9 @@ export default function Backups() {
               <td data-label="Status"><span className={`status ${b.status}`}>{b.status}</span></td>
               <td className="actions">
                 {b.status === "ok" && b.locked && <button onClick={() => setUnlock(b)}>Unlock</button>}
-                {b.status === "ok" && <button className="primary" onClick={() => setRestore(b)}>Restore</button>}
+                {b.status === "ok" && <button onClick={() => setRestore(b)}>Restore</button>}
                 {b.status !== "deleted" && <button onClick={() => verify(b)}>Verify</button>}
-                {b.status !== "deleted" && <button onClick={() => remove(b)}>Delete</button>}
+                {b.status !== "deleted" && <button className="subtle-danger" onClick={() => remove(b)}>Delete</button>}
               </td>
             </tr>
           ))}

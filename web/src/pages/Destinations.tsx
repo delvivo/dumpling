@@ -65,7 +65,7 @@ export default function Destinations() {
               <td className="actions">
                 <button onClick={() => { setEdit(d); setNotice(""); }}>Edit</button>
                 <button onClick={() => rescan(d)} title="Import backups found on this destination">Rescan</button>
-                <button onClick={() => remove(d)}>Delete</button>
+                <button className="subtle-danger" onClick={() => remove(d)}>Delete</button>
               </td>
             </tr>
           ))}

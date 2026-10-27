@@ -123,7 +123,7 @@ export default function Connections() {
               <td data-label="Name">{c.name}</td><td data-label="Engine">{c.engine}</td><td data-label="Host">{c.host}:{c.port}</td><td data-label="Version">{c.server_version || "–"}</td><td data-label="Last test">{when(c.tested_at)}</td>
               <td className="actions">
                 <button onClick={() => { setEdit({ ...c, password: "" }); setTest(null); }}>Edit</button>
-                <button onClick={() => remove(c)}>Delete</button>
+                <button className="subtle-danger" onClick={() => remove(c)}>Delete</button>
               </td>
             </tr>
           ))}

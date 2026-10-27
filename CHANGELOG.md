@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the table, Esc closes, focus moves inside and returns to the opener.
 - Dark mode: error/success/warning colors and text on primary/danger buttons now meet WCAG AA
   contrast; native controls (checkboxes, selects, scrollbars) follow the dark theme.
+- Buttons and fields have borders with at least 3:1 contrast, a visible amber keyboard focus ring
+  and hover feedback; backup rows no longer show an amber Restore on every row, and row Delete
+  buttons are marked in red.
 - Mobile: list tables stack into one card per row on narrow screens instead of scrolling the page
   sideways; login/setup forms fit 320px screens; on touch devices controls are at least 44px tall
   and fields use 16px text (no iOS zoom on focus).

@@ -17,6 +17,8 @@ colors:
   night-steam: "#f5f5f4"
   night-grey: "#a8a29e"
   night-line: "#44403c"
+  control-line: "#8c847d"
+  control-line-night: "#857d76"
   night-tray: "#292524"
   fried-wrapper-amber-night: "#f59e0b"
   terminal-black: "#0c0a09"
@@ -131,7 +133,8 @@ Warm stone neutrals with one amber accent and three semantic outcome colors.
 - **Wrapper White** (`wrapper-white`): trays (cards, forms, tables, nav bar, dialogs) and default buttons.
 - **Soy Ink** (`soy-ink`): body text. In dark mode it becomes the page background.
 - **Steam Grey** (`steam-grey`): secondary text, table headers, the signed-in user.
-- **Basket Line** (`basket-line`): every border and row divider. Also the log text color.
+- **Basket Line** (`basket-line`): tray, table, nav and dialog borders and row dividers. Also the log text color.
+- **Control Line** (`control-line`, `control-line-night` in dark mode): borders of buttons and fields, ≥3:1 against their surroundings so controls read as controls.
 - **Night tray set** (`night-tray`, `night-line`, `night-grey`, `night-steam`): the dark-mode equivalents of tray, border, muted and text.
 - **Terminal Black** (`terminal-black`): the operation log background in both themes.
 
@@ -189,13 +192,15 @@ Gently rounded and consistent by size: controls (buttons, inputs, warning banner
 Restrained: plain bordered controls, with color reserved for intent.
 
 ### Buttons
-- **Shape:** gently rounded (6px), 1px Basket Line border, inherits body font.
-- **Default:** Wrapper White fill, Soy Ink text.
+- **Shape:** gently rounded (6px), 1px Control Line border, inherits body font.
+- **Default:** Wrapper White fill, Soy Ink text. Row actions (Restore, Verify, Edit…) are always default buttons; amber belongs only to the page or dialog primary action.
+- **Subtle danger:** default button with Chili Red text; for row-level Delete (the confirmation that follows carries the weight).
 - **Primary:** Fried-Wrapper Amber fill and border, `--on-fill` text (white light, Soy Ink dark). One per form or dialog.
 - **Danger:** Chili Red fill and border, `--on-fill` text; for destructive confirmation.
 - **Link:** borderless, amber text, no padding; used for inline actions like Log out.
 - **Disabled:** 50% opacity, `not-allowed` cursor.
-- **Hover / Focus:** no custom states; browser defaults apply.
+- **Hover** (pointer devices only): default buttons darken their border to Soy Ink; filled buttons shift brightness (`--fill-hover`: 0.9 light, 1.1 dark); links and nav items turn amber with an underline.
+- **Focus:** every focusable element shows a 2px amber `:focus-visible` outline, 2px offset (1px on fields).
 
 ### Status Pills
 - **Style:** outline only (1px currentColor border, no fill), fully rounded, 0.8rem, nowrap.
@@ -209,9 +214,9 @@ Restrained: plain bordered controls, with color reserved for intent.
 - **Internal Padding:** 1rem, children in a grid with 0.75rem gap. Forms share this exact treatment.
 
 ### Inputs / Fields
-- **Style:** 1px Basket Line border, 6px radius, Rice Paper fill, inherits body font.
+- **Style:** 1px Control Line border, 6px radius, Rice Paper fill, inherits body font.
 - **Labels:** stacked above with a 0.25rem gap at 0.9rem; checkboxes use an inline label (control and text side by side).
-- **Focus:** browser default.
+- **Focus:** 2px amber outline, 1px offset.
 - **Error:** Chili Red text below the field or form (`.error`).
 
 ### Navigation
