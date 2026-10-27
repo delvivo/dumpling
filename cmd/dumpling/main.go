@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+	_ "time/tzdata" // zoneinfo embedded: TZ and CRON_TZ= work in minimal images without tzdata
 
 	"github.com/delvivo/dumpling/internal/runner"
 	"github.com/delvivo/dumpling/internal/schedule"
@@ -24,10 +25,11 @@ import (
 var version = "dev"
 
 func main() {
-	dataDir := flag.String("data-dir", "./data", "directory for state, logs and master key")
-	bind := flag.String("bind", "127.0.0.1:9898", "listen address")
-	cert := flag.String("tls-cert", "", "TLS certificate file (enables HTTPS with --tls-key)")
-	key := flag.String("tls-key", "", "TLS private key file")
+	// Each flag defaults to its DUMPLING_* env var; an explicit flag wins.
+	dataDir := flag.String("data-dir", envOr("DUMPLING_DATA_DIR", "./data"), "directory for state, logs and master key [DUMPLING_DATA_DIR]")
+	bind := flag.String("bind", envOr("DUMPLING_BIND", "127.0.0.1:9898"), "listen address [DUMPLING_BIND]")
+	cert := flag.String("tls-cert", os.Getenv("DUMPLING_TLS_CERT"), "TLS certificate file, enables HTTPS with --tls-key [DUMPLING_TLS_CERT]")
+	key := flag.String("tls-key", os.Getenv("DUMPLING_TLS_KEY"), "TLS private key file [DUMPLING_TLS_KEY]")
 	flag.Parse()
 	if err := run(*dataDir, *bind, *cert, *key); err != nil {
 		slog.Error("fatal", "err", err)
@@ -82,7 +84,7 @@ func run(dataDir, bind, cert, key string) error {
 	}
 	if host, _, _ := net.SplitHostPort(bind); !tls && !isLoopback(host) {
 		slog.Warn("!!! listening on a non-loopback address WITHOUT TLS: passwords and sessions travel in clear text. " +
-			"Use --tls-cert/--tls-key or put a TLS reverse proxy in front.")
+			"Use --tls-cert/--tls-key (DUMPLING_TLS_CERT/DUMPLING_TLS_KEY) or put a TLS reverse proxy in front.")
 	}
 	errc := make(chan error, 1)
 	go func() {
@@ -104,6 +106,13 @@ func run(dataDir, bind, cert, key string) error {
 	srv.Shutdown(shut)
 	r.Wait()
 	return nil
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func isLoopback(host string) bool {

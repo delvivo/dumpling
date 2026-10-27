@@ -25,6 +25,17 @@ docker run -d -p 127.0.0.1:9898:9898 -v dumpling-data:/data -v /srv/backups:/bac
 The image listens on all interfaces *inside* the container: publish the port on loopback as above,
 or serve it behind TLS (`--tls-cert/--tls-key`, or a TLS reverse proxy).
 
+### Try it with Docker Compose (test databases included)
+
+```sh
+docker compose -f testdata/compose.yaml up -d --build --wait dumpling   # http://127.0.0.1:9898
+docker compose -f testdata/compose.yaml down -v                         # tear down + delete volumes
+```
+
+This starts Dumpling plus two instances each of PostgreSQL 17, MySQL 8.4 and SQL Server 2022.
+The header comment of the `dumpling` service in `testdata/compose.yaml` lists the host names,
+ports and test password to enter in the UI; use `/backups` as destination path.
+
 ### From source
 
 Requires Go 1.26+ and Node 22+.
@@ -43,13 +54,17 @@ Client tools needed on the host (the UI warns when they are missing):
 | MySQL | `mysql`, `mysqldump` from **Oracle MySQL** (the MariaDB client lacks `--set-gtid-purged`) |
 | SQL Server | none (native `BACKUP`/`RESTORE` through the Go driver) |
 
-## Flags
+## Configuration
 
-| Flag | Default | |
-|------|---------|--|
-| `--data-dir` | `./data` | SQLite state, operation logs, master key |
-| `--bind` | `127.0.0.1:9898` | listen address; a non-loopback address without TLS logs a warning |
-| `--tls-cert`, `--tls-key` | – | enable HTTPS with your certificate |
+Every flag can also be set by environment variable; an explicit flag wins over the variable.
+
+| Flag | Environment variable | Default | |
+|------|----------------------|---------|--|
+| `--data-dir` | `DUMPLING_DATA_DIR` | `./data` (image: `/data`) | SQLite state, operation logs, master key |
+| `--bind` | `DUMPLING_BIND` | `127.0.0.1:9898` (image: `0.0.0.0:9898`) | listen address; non-loopback without TLS logs a warning |
+| `--tls-cert`, `--tls-key` | `DUMPLING_TLS_CERT`, `DUMPLING_TLS_KEY` | – | enable HTTPS with your certificate |
+| – | `DUMPLING_MASTER_KEY` | generated `<data-dir>/master.key` | base64 of 32 bytes, encrypts stored secrets |
+| – | `TZ` | system time zone | time zone of plan schedules without a `CRON_TZ=` prefix |
 
 On first launch the UI asks you to create the admin account.
 

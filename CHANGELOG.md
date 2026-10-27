@@ -23,3 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Startup recovery marking interrupted operations and removing partial files.
 - Dockerfile bundling PostgreSQL 17 and MySQL 8.4 clients; Docker Compose test environment and
   integration round-trip tests for all three engines.
+- Environment variables for every flag (`DUMPLING_DATA_DIR`, `DUMPLING_BIND`, `DUMPLING_TLS_CERT`,
+  `DUMPLING_TLS_KEY`); explicit flags take precedence.
+- `dumpling` service in `testdata/compose.yaml` to try the app next to the test databases.
+
+### Fixed
+
+- Time zones (`TZ`, `CRON_TZ=` in plan schedules) now work in images without tzdata: zoneinfo is
+  embedded in the binary.

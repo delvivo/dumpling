@@ -14,6 +14,16 @@ go build -o dumpling ./cmd/dumpling
 ./dumpling --data-dir ./data          # http://127.0.0.1:9898
 ```
 
+## Run everything with Docker Compose
+
+```sh
+docker compose -f testdata/compose.yaml up -d --build --wait dumpling   # app + test DBs, http://127.0.0.1:9898
+```
+
+Env vars and the values to enter in the UI are documented in the `dumpling` service of
+`testdata/compose.yaml`. Inside the compose network use host names `pg-a`, `mysql-a`, `mssql-a`…,
+destination `/backups`, SQL Server share `/var/opt/mssql/share` (server) / `/share` (local).
+
 ## Test databases
 
 ```sh

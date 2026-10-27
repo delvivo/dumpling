@@ -31,6 +31,39 @@ services:
   mssql-a: { <<: *mssql, ports: ["11433:1433"] }
   mssql-b: { <<: *mssql, ports: ["11434:1433"] }
 
+  # Dumpling itself, on the same network as the test databases.
+  #   docker compose -f testdata/compose.yaml up -d --build --wait dumpling   → http://127.0.0.1:9898
+  # Values to enter in the UI (password for all: Dumpling-Test-1):
+  #   PostgreSQL  host pg-a / pg-b        port 5432  user postgres  TLS disable
+  #   MySQL       host mysql-a / mysql-b  port 3306  user root      TLS preferred
+  #   SQL Server  host mssql-a / mssql-b  port 1433  user sa        TLS "trust server certificate"
+  #               share as seen by SQL Server: /var/opt/mssql/share — as seen by Dumpling: /share
+  #   Destination path: /backups
+  dumpling:
+    build: { context: .. }
+    ports: ["127.0.0.1:9898:9898"]      # published on host loopback only
+    environment:
+      DUMPLING_BIND: 0.0.0.0:9898        # listen address inside the container (flag --bind)
+      DUMPLING_DATA_DIR: /data           # SQLite state, logs (flag --data-dir)
+      # Master key for secrets at rest: base64 of 32 bytes. TEST ONLY — this value is public.
+      # Omit it to have master.key generated in DUMPLING_DATA_DIR.
+      DUMPLING_MASTER_KEY: ZHVtcGxpbmctdGVzdC1rZXktTk9ULUEtU0VDUkVUISE=
+      TZ: Europe/Rome                    # time zone of plan schedules without CRON_TZ=
+      # HTTPS (also mount the files, e.g. ./certs:/certs:ro):
+      # DUMPLING_TLS_CERT: /certs/tls.crt
+      # DUMPLING_TLS_KEY: /certs/tls.key
+    volumes:
+      - dumpling-data:/data
+      - dumpling-backups:/backups
+      - ./mssql-share:/share
+    depends_on:
+      pg-a: { condition: service_healthy }
+      pg-b: { condition: service_healthy }
+      mysql-a: { condition: service_healthy }
+      mysql-b: { condition: service_healthy }
+      mssql-a: { condition: service_healthy }
+      mssql-b: { condition: service_healthy }
+
   # Integration tests inside a container that has the client tools:
   #   docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b
   #   docker compose -f testdata/compose.yaml run --rm it
@@ -55,3 +88,5 @@ services:
 volumes:
   go-cache:
   go-mod:
+  dumpling-data:
+  dumpling-backups:

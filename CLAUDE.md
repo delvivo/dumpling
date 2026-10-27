@@ -16,6 +16,8 @@ go vet ./... && go test ./...                # unit tests (artifact test streams
 cd web && npm test                           # Vitest (restoreGate, cronPresets)
 cd web && npm run dev                        # UI dev server, proxies /api to :9898
 
+docker compose -f testdata/compose.yaml up -d --build --wait dumpling   # app + test DBs on :9898
+
 # integration round-trip on real engines (host lacks client tools → runs in a container)
 docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b
 docker compose -f testdata/compose.yaml run --rm it
@@ -26,7 +28,7 @@ On Git Bash, `docker run -v` paths need `MSYS_NO_PATHCONV=1`.
 
 ## Architecture
 
-- `cmd/dumpling` — flags, wiring, startup recovery, scheduler loop, loopback/TLS warning.
+- `cmd/dumpling` — flags (each defaults to a `DUMPLING_*` env var), wiring, startup recovery, scheduler loop, loopback/TLS warning.
 - `internal/store` — SQLite schema (`schema.sql`, embedded) and queries; secrets sealed via `internal/secret` (AES-256-GCM, master key from `DUMPLING_MASTER_KEY` or `<data-dir>/master.key`).
 - `internal/engine` — `Engine` interface with `postgres` (psql/pg_dump/pg_restore, password via `PGPASSWORD`), `mysql` (mysql/mysqldump, credentials via temp `--defaults-extra-file`), `mssql` (go-mssqldb, native BACKUP/RESTORE through a shared directory). Secrets never on argv.
 - `internal/artifact` — streaming pipeline gzip → age → sha256 → `.partial` → link to final name (never overwrites) + JSON sidecar.

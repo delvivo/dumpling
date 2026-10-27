@@ -36,9 +36,12 @@ WORKDIR /src
 
 FROM tools
 COPY --from=build /out/dumpling /usr/local/bin/dumpling
-RUN useradd --system --uid 10001 --home /data dumpling && install -d -o dumpling /data
+# uid 10001 matches the `mssql` user of SQL Server images, so a shared .bak directory works for both.
+RUN useradd --system --uid 10001 --home /data dumpling && install -d -o dumpling /data /backups
 USER dumpling
 VOLUME /data
 EXPOSE 9898
-# Binds all interfaces inside the container: publish the port only behind TLS (--tls-cert/--tls-key) or a TLS reverse proxy.
-ENTRYPOINT ["dumpling", "--data-dir", "/data", "--bind", "0.0.0.0:9898"]
+# Binds all interfaces inside the container: publish the port on loopback, or use TLS
+# (DUMPLING_TLS_CERT/DUMPLING_TLS_KEY) or a TLS reverse proxy.
+ENV DUMPLING_DATA_DIR=/data DUMPLING_BIND=0.0.0.0:9898
+ENTRYPOINT ["dumpling"]
