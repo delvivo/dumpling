@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the table, Esc closes, focus moves inside and returns to the opener.
 - Dark mode: error/success/warning colors and text on primary/danger buttons now meet WCAG AA
   contrast; native controls (checkboxes, selects, scrollbars) follow the dark theme.
+- Connection/destination test results and rescan results are announced to screen readers; the
+  connection Save button is disabled while saving (no duplicate connections on double click).
+- Login and setup fields declare `autocomplete` (username, current/new password) for password
+  managers and assistive tech; each page sets its own tab title (e.g. "Backups · Dumpling"); the
+  encrypted marker is announced as "encrypted"; stacked tables on narrow screens keep table
+  semantics for screen readers.
 - Warning text in light mode meets WCAG AA (5.7:1 on its banner tint, was 4.2:1).
 - Delete confirmations (backup, connection, destination, plan) use an in-app dialog instead of the
   browser's confirm/prompt: themed, focus starts on Cancel, deleting a backup still requires typing

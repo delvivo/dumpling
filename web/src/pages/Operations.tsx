@@ -62,19 +62,19 @@ export default function Operations() {
         {sel("plan_id", "Plan", "All plans", plans.map((p) => [p.id, p.name]))}
         {sel("connection_id", "Connection", "All connections", conns.map((c) => [c.id, c.name]))}
       </div>
-      <table>
-        <thead><tr><th>Created</th><th>Type</th><th>Status</th><th>Subject</th><th>Message</th></tr></thead>
-        <tbody>
+      <table role="table">
+        <thead role="rowgroup"><tr role="row"><th role="columnheader">Created</th><th role="columnheader">Type</th><th role="columnheader">Status</th><th role="columnheader">Subject</th><th role="columnheader">Message</th></tr></thead>
+        <tbody role="rowgroup">
           {ops.map((o) => (
-            <tr key={o.id}>
-              <td data-label="Created"><Link to={`/operations/${o.id}`}>{when(o.created_at)}</Link></td>
-              <td data-label="Type">{o.type}</td>
-              <td data-label="Status"><span className={`status ${o.status}`}>{o.status}</span></td>
-              <td data-label="Subject">{name(o.connection_id)}{o.database && ` / ${o.database}`}{o.type === "restore" && ` → ${name(o.target_connection_id)} / ${o.target_database}`}</td>
-              <td data-label="Message" className="muted">{o.message}</td>
+            <tr role="row" key={o.id}>
+              <td role="cell" data-label="Created"><Link to={`/operations/${o.id}`}>{when(o.created_at)}</Link></td>
+              <td role="cell" data-label="Type">{o.type}</td>
+              <td role="cell" data-label="Status"><span className={`status ${o.status}`}>{o.status}</span></td>
+              <td role="cell" data-label="Subject">{name(o.connection_id)}{o.database && ` / ${o.database}`}{o.type === "restore" && ` → ${name(o.target_connection_id)} / ${o.target_database}`}</td>
+              <td role="cell" data-label="Message" className="muted">{o.message}</td>
             </tr>
           ))}
-          {!ops.length && <tr><td colSpan={5} className="muted">No operations.</td></tr>}
+          {!ops.length && <tr role="row"><td role="cell" colSpan={5} className="muted">No operations.</td></tr>}
         </tbody>
       </table>
       {more && ops.length > 0 && <p><button onClick={loadMore}>Load more</button></p>}

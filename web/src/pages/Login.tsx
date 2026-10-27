@@ -20,8 +20,8 @@ export default function Login({ onDone }: { onDone: () => void }) {
     <main className="center">
       <form onSubmit={submit} style={{ width: "min(340px, 100%)" }}>
         <h1>🥟 Dumpling</h1>
-        <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required /></label>
-        <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+        <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required /></label>
+        <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></label>
         {error && <p className="error" role="alert">{error}</p>}
         <button className="primary">Log in</button>
       </form>

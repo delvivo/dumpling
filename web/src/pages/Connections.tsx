@@ -28,6 +28,7 @@ export default function Connections() {
   const [error, setError] = useState("");
   const [test, setTest] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const load = () => get<Connection[]>("/connections").then(setList).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
@@ -37,7 +38,7 @@ export default function Connections() {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError(""); setSaving(true);
     try {
       if (edit!.id) await put(`/connections/${edit!.id}`, edit);
       else await post("/connections", edit);
@@ -46,7 +47,7 @@ export default function Connections() {
       load();
     } catch (err: any) {
       setError(err.message);
-    }
+    } finally { setSaving(false); }
   };
 
   const runTest = async () => {
@@ -106,30 +107,31 @@ export default function Connections() {
           )}
           {test && (
             <div className={test.ok ? "card" : "card error"}>
-              {test.ok ? <>✅ Connected — server {test.server_version}. Databases: {(test.databases ?? []).join(", ") || "none"}</> : <>❌ {test.error}</>}
+              {test.ok ? <><span aria-hidden="true">✅</span> Connected — server {test.server_version}. Databases: {(test.databases ?? []).join(", ") || "none"}</> : <><span aria-hidden="true">❌</span> {test.error}</>}
               {(test.warnings ?? []).map((w) => <div key={w} className="warn">{w}</div>)}
             </div>
           )}
+          <p className="sr-only" role="status">{test ? (test.ok ? "Connection test succeeded." : `Connection test failed: ${test.error}`) : ""}</p>
           <div className="actions">
-            <button className="primary">Save</button>
+            <button className="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
             <button type="button" onClick={runTest} disabled={testing}>{testing ? "Testing…" : "Test connection"}</button>
             <button type="button" onClick={() => setEdit(null)}>Cancel</button>
           </div>
         </form>
       )}
-      <table>
-        <thead><tr><th>Name</th><th>Engine</th><th>Host</th><th>Version</th><th>Last test</th><th /></tr></thead>
-        <tbody>
+      <table role="table">
+        <thead role="rowgroup"><tr role="row"><th role="columnheader">Name</th><th role="columnheader">Engine</th><th role="columnheader">Host</th><th role="columnheader">Version</th><th role="columnheader">Last test</th><th role="columnheader" aria-label="Actions" /></tr></thead>
+        <tbody role="rowgroup">
           {list.map((c) => (
-            <tr key={c.id}>
-              <td data-label="Name">{c.name}</td><td data-label="Engine">{c.engine}</td><td data-label="Host">{c.host}:{c.port}</td><td data-label="Version">{c.server_version || "–"}</td><td data-label="Last test">{when(c.tested_at)}</td>
-              <td className="actions">
+            <tr role="row" key={c.id}>
+              <td role="cell" data-label="Name">{c.name}</td><td role="cell" data-label="Engine">{c.engine}</td><td role="cell" data-label="Host">{c.host}:{c.port}</td><td role="cell" data-label="Version">{c.server_version || "–"}</td><td role="cell" data-label="Last test">{when(c.tested_at)}</td>
+              <td role="cell" className="actions">
                 <button onClick={() => { setEdit({ ...c, password: "" }); setTest(null); }}>Edit</button>
                 <button className="subtle-danger" onClick={() => setDeleting(c)}>Delete</button>
               </td>
             </tr>
           ))}
-          {!list.length && <tr><td colSpan={6} className="muted">No connections yet.</td></tr>}
+          {!list.length && <tr role="row"><td role="cell" colSpan={6} className="muted">No connections yet.</td></tr>}
         </tbody>
       </table>
     </>

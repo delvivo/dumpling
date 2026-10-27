@@ -55,23 +55,24 @@ export default function Destinations() {
       <h1>Destinations <button className="primary" onClick={() => { setEdit(blank()); setNotice(""); }}>Add destination</button></h1>
       {deleting && <Confirm title={`Delete destination ${deleting.name}?`} confirmLabel="Delete destination" onConfirm={() => remove(deleting)} onClose={() => setDeleting(null)}>Stored backup files are not touched.</Confirm>}
       {error && <p className="error" role="alert">{error}</p>}
+      <p className="sr-only" role="status">{notice}</p>
       {notice && <p className="card">{notice}</p>}
       {edit && <DestinationForm key={edit.id || "new"} initial={edit} onDone={(n) => { setEdit(null); if (n) setNotice(n); load(); }} />}
-      <table>
-        <thead><tr><th>Name</th><th>Type</th><th>Location</th><th>Backups</th><th>Free space</th><th /></tr></thead>
-        <tbody>
+      <table role="table">
+        <thead role="rowgroup"><tr role="row"><th role="columnheader">Name</th><th role="columnheader">Type</th><th role="columnheader">Location</th><th role="columnheader">Backups</th><th role="columnheader">Free space</th><th role="columnheader" aria-label="Actions" /></tr></thead>
+        <tbody role="rowgroup">
           {list.map((d) => (
-            <tr key={d.id}>
-              <td data-label="Name">{d.name}</td><td data-label="Type">{d.type}</td><td data-label="Location"><code>{location(d)}</code></td><td data-label="Backups">{d.backup_count ?? 0}</td>
-              <td data-label="Free space">{d.type === "local" ? bytes(d.free_bytes) : "–"}</td>
-              <td className="actions">
+            <tr role="row" key={d.id}>
+              <td role="cell" data-label="Name">{d.name}</td><td role="cell" data-label="Type">{d.type}</td><td role="cell" data-label="Location"><code>{location(d)}</code></td><td role="cell" data-label="Backups">{d.backup_count ?? 0}</td>
+              <td role="cell" data-label="Free space">{d.type === "local" ? bytes(d.free_bytes) : "–"}</td>
+              <td role="cell" className="actions">
                 <button onClick={() => { setEdit(d); setNotice(""); }}>Edit</button>
                 <button onClick={() => rescan(d)} title="Import backups found on this destination">Rescan</button>
                 <button className="subtle-danger" onClick={() => setDeleting(d)}>Delete</button>
               </td>
             </tr>
           ))}
-          {!list.length && <tr><td colSpan={6} className="muted">No destinations yet.</td></tr>}
+          {!list.length && <tr role="row"><td role="cell" colSpan={6} className="muted">No destinations yet.</td></tr>}
         </tbody>
       </table>
     </>
@@ -194,6 +195,7 @@ function DestinationForm({ initial, onDone }: { initial: Destination; onDone: (n
         </>
       )}
 
+      <p className="sr-only" role="status">{tested ? `Test ${tested.ok ? "succeeded" : "failed"}: ${tested.msg}` : ""}</p>
       {tested && (
         <div className={tested.ok ? "card" : "warn"}>
           <span className={tested.ok ? "" : "error"}>{tested.msg}</span>

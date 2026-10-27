@@ -18,6 +18,12 @@ export default function App() {
   const [user, setUser] = useState("");
   const location = useLocation();
 
+  useEffect(() => {
+    const seg = location.pathname.split("/")[1] ?? "";
+    const page = state === "setup" ? "Setup" : state === "login" ? "Log in" : state === "ready" && seg ? seg[0].toUpperCase() + seg.slice(1) : "";
+    document.title = page ? `${page} · Dumpling` : "Dumpling";
+  }, [state, location.pathname]);
+
   const check = async () => {
     try {
       const s = await get<{ needed: boolean }>("/setup");

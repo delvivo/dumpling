@@ -81,19 +81,19 @@ export default function Backups() {
           <option value="deleted">deleted</option>
         </select>
       </div>
-      <table>
-        <thead><tr><th>Time</th><th>Connection / database</th><th>Plan</th><th>Destination</th><th>Size</th><th>SHA-256</th><th>Status</th><th /></tr></thead>
-        <tbody>
+      <table role="table">
+        <thead role="rowgroup"><tr role="row"><th role="columnheader">Time</th><th role="columnheader">Connection / database</th><th role="columnheader">Plan</th><th role="columnheader">Destination</th><th role="columnheader">Size</th><th role="columnheader">SHA-256</th><th role="columnheader">Status</th><th role="columnheader" aria-label="Actions" /></tr></thead>
+        <tbody role="rowgroup">
           {list.map((b) => (
-            <tr key={b.id}>
-              <td data-label="Time">{when(b.started_at)}</td>
-              <td data-label="Database">{b.connection_name} / <strong>{b.database}</strong><div className="muted">{b.engine} {b.server_version}</div></td>
-              <td data-label="Plan">{b.plan_name || (b.imported ? "–" : "on-demand")}{b.imported && <div><span className="status">imported</span></div>}</td>
-              <td data-label="Destination"><span className="status">{b.destination_type}</span> <code className="muted" title={b.location}>{b.location}</code></td>
-              <td data-label="Size">{bytes(b.size_bytes)}{b.encrypted && " 🔒"}{b.locked && <div><span className="status warning">locked</span></div>}</td>
-              <td data-label="SHA-256"><code title={b.sha256}>{b.sha256.slice(0, 12)}…</code></td>
-              <td data-label="Status"><span className={`status ${b.status}`}>{b.status}</span></td>
-              <td className="actions">
+            <tr role="row" key={b.id}>
+              <td role="cell" data-label="Time">{when(b.started_at)}</td>
+              <td role="cell" data-label="Database">{b.connection_name} / <strong>{b.database}</strong><div className="muted">{b.engine} {b.server_version}</div></td>
+              <td role="cell" data-label="Plan">{b.plan_name || (b.imported ? "–" : "on-demand")}{b.imported && <div><span className="status">imported</span></div>}</td>
+              <td role="cell" data-label="Destination"><span className="status">{b.destination_type}</span> <code className="muted" title={b.location}>{b.location}</code></td>
+              <td role="cell" data-label="Size">{bytes(b.size_bytes)}{b.encrypted && <span role="img" aria-label="encrypted" title="encrypted"> 🔒</span>}{b.locked && <div><span className="status warning">locked</span></div>}</td>
+              <td role="cell" data-label="SHA-256"><code title={b.sha256}>{b.sha256.slice(0, 12)}…</code></td>
+              <td role="cell" data-label="Status"><span className={`status ${b.status}`}>{b.status}</span></td>
+              <td role="cell" className="actions">
                 {b.status === "ok" && b.locked && <button onClick={() => setUnlock(b)}>Unlock</button>}
                 {b.status === "ok" && <button onClick={() => setRestore(b)}>Restore</button>}
                 {b.status !== "deleted" && <button onClick={() => verify(b)}>Verify</button>}
@@ -101,7 +101,7 @@ export default function Backups() {
               </td>
             </tr>
           ))}
-          {!list.length && <tr><td colSpan={8} className="muted">No backups.</td></tr>}
+          {!list.length && <tr role="row"><td role="cell" colSpan={8} className="muted">No backups.</td></tr>}
         </tbody>
       </table>
       {showNew && <NewBackup conns={conns} dests={dests} onClose={() => setShowNew(false)} />}

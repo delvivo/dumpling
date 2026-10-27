@@ -43,17 +43,17 @@ export default function Plans() {
       )}
       {error && <p className="error" role="alert">{error}</p>}
       {edit && <PlanForm plan={edit} conns={conns} dests={dests} onDone={() => { setEdit(null); load(); }} onCancel={() => setEdit(null)} />}
-      <table>
-        <thead><tr><th>Name</th><th>Source</th><th>Schedule</th><th>Next run</th><th>Last run</th><th /></tr></thead>
-        <tbody>
+      <table role="table">
+        <thead role="rowgroup"><tr role="row"><th role="columnheader">Name</th><th role="columnheader">Source</th><th role="columnheader">Schedule</th><th role="columnheader">Next run</th><th role="columnheader">Last run</th><th role="columnheader" aria-label="Actions" /></tr></thead>
+        <tbody role="rowgroup">
           {list.map((p) => (
-            <tr key={p.id}>
-              <td data-label="Name">{p.name}{p.encrypted && " 🔒"}{p.paused && <span className="status skipped"> paused</span>}</td>
-              <td data-label="Source">{conns.find((c) => c.id === p.connection_id)?.name} / {p.databases.join(", ")}</td>
-              <td data-label="Schedule"><code>{p.schedule}</code></td>
-              <td data-label="Next run">{p.paused ? "–" : when(p.next_run)}</td>
-              <td data-label="Last run">{p.last_operation ? <Link to={`/operations/${p.last_operation.id}`}><span className={`status ${p.last_operation.status}`}>{p.last_operation.status}</span></Link> : "–"}</td>
-              <td className="actions">
+            <tr role="row" key={p.id}>
+              <td role="cell" data-label="Name">{p.name}{p.encrypted && <span role="img" aria-label="encrypted" title="encrypted"> 🔒</span>}{p.paused && <span className="status skipped"> paused</span>}</td>
+              <td role="cell" data-label="Source">{conns.find((c) => c.id === p.connection_id)?.name} / {p.databases.join(", ")}</td>
+              <td role="cell" data-label="Schedule"><code>{p.schedule}</code></td>
+              <td role="cell" data-label="Next run">{p.paused ? "–" : when(p.next_run)}</td>
+              <td role="cell" data-label="Last run">{p.last_operation ? <Link to={`/operations/${p.last_operation.id}`}><span className={`status ${p.last_operation.status}`}>{p.last_operation.status}</span></Link> : "–"}</td>
+              <td role="cell" className="actions">
                 <button onClick={() => act(() => post(`/plans/${p.id}/run`))}>Run now</button>
                 <button onClick={() => act(() => post(`/plans/${p.id}/${p.paused ? "resume" : "pause"}`))}>{p.paused ? "Resume" : "Pause"}</button>
                 <button onClick={() => setEdit(p)}>Edit</button>
@@ -61,7 +61,7 @@ export default function Plans() {
               </td>
             </tr>
           ))}
-          {!list.length && <tr><td colSpan={6} className="muted">No plans yet.</td></tr>}
+          {!list.length && <tr role="row"><td role="cell" colSpan={6} className="muted">No plans yet.</td></tr>}
         </tbody>
       </table>
     </>
