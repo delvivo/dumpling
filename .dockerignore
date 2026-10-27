@@ -1,0 +1,10 @@
+.git/
+web/node_modules/
+web/dist/ui/
+data/
+backups/
+testdata/mssql-share/
+*.log*
+.env*
+Dockerfile*
+.dockerignore

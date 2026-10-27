@@ -1,0 +1,57 @@
+# Test databases for integration tests and quickstart.md.
+# Linux hosts: `chmod 777 testdata/mssql-share` (SQL Server runs as uid 10001).
+x-pg: &pg
+  image: postgres:17
+  environment:
+    POSTGRES_PASSWORD: Dumpling-Test-1
+  healthcheck: { test: ["CMD", "pg_isready", "-U", "postgres"], interval: 2s, retries: 30 }
+x-mysql: &mysql
+  image: mysql:8.4
+  environment:
+    MYSQL_ROOT_PASSWORD: Dumpling-Test-1
+  healthcheck: { test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pDumpling-Test-1"], interval: 2s, retries: 60 }
+x-mssql: &mssql
+  image: mcr.microsoft.com/mssql/server:2022-latest
+  environment:
+    ACCEPT_EULA: "Y"
+    MSSQL_SA_PASSWORD: Dumpling-Test-1
+    MSSQL_PID: Developer
+  healthcheck:
+    test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "localhost", "-U", "sa", "-P", "Dumpling-Test-1", "-Q", "SELECT 1"]
+    interval: 3s
+    retries: 60
+  volumes:
+    - ./mssql-share:/var/opt/mssql/share
+
+services:
+  pg-a: { <<: *pg, ports: ["15432:5432"] }
+  pg-b: { <<: *pg, ports: ["15433:5432"] }
+  mysql-a: { <<: *mysql, ports: ["13306:3306"] }
+  mysql-b: { <<: *mysql, ports: ["13307:3306"] }
+  mssql-a: { <<: *mssql, ports: ["11433:1433"] }
+  mssql-b: { <<: *mssql, ports: ["11434:1433"] }
+
+  # Integration tests inside a container that has the client tools:
+  #   docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b
+  #   docker compose -f testdata/compose.yaml run --rm it
+  it:
+    profiles: [it]
+    build: { context: .., target: it }
+    volumes:
+      - ..:/src
+      - ./mssql-share:/share
+      - go-cache:/root/.cache
+      - go-mod:/root/go
+    environment:
+      IT_PG_A: pg-a:5432
+      IT_PG_B: pg-b:5432
+      IT_MY_A: mysql-a:3306
+      IT_MY_B: mysql-b:3306
+      IT_MS_A: mssql-a:1433
+      IT_MS_B: mssql-b:1433
+      IT_MSSQL_SHARE_LOCAL: /share
+    command: ["go", "test", "-tags", "integration", "-count=1", "-v", "./internal/runner/"]
+
+volumes:
+  go-cache:
+  go-mod:

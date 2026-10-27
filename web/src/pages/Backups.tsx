@@ -1,0 +1,165 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router";
+import { bytes, del, get, post, when } from "../api";
+import { useEvents } from "../events";
+import type { Backup, Connection, Destination, Operation } from "../types";
+import RestoreWizard from "./RestoreWizard";
+
+type Tools = Record<string, { version: string; variant?: string } | null>;
+const required: Record<string, string[]> = { postgres: ["psql", "pg_dump", "pg_restore"], mysql: ["mysql", "mysqldump"], mssql: [] };
+
+export default function Backups() {
+  const [list, setList] = useState<Backup[]>([]);
+  const [conns, setConns] = useState<Connection[]>([]);
+  const [dests, setDests] = useState<Destination[]>([]);
+  const [tools, setTools] = useState<Tools>({});
+  const [filter, setFilter] = useState({ connection_id: "", status: "" });
+  const [running, setRunning] = useState<Record<string, Operation>>({});
+  const [showNew, setShowNew] = useState(false);
+  const [restore, setRestore] = useState<Backup | null>(null);
+  const [error, setError] = useState("");
+
+  const load = () => {
+    const q = new URLSearchParams(Object.entries(filter).filter(([, v]) => v)).toString();
+    get<Backup[]>("/backups?" + q).then(setList).catch((e) => setError(e.message));
+  };
+  useEffect(load, [filter]);
+  useEffect(() => {
+    get<Connection[]>("/connections").then(setConns);
+    get<Destination[]>("/destinations").then(setDests);
+    get<{ tools: Tools }>("/system").then((s) => setTools(s.tools));
+  }, []);
+
+  useEvents({
+    operation: (o) => {
+      if (o.type !== "backup" && o.type !== "verify" && o.type !== "prune") return;
+      setRunning((r) => {
+        const n = { ...r };
+        if (o.status === "pending" || o.status === "running") n[o.id] = o;
+        else delete n[o.id];
+        return n;
+      });
+      if (!["pending", "running"].includes(o.status)) load();
+    },
+  });
+
+  const missing = conns
+    .flatMap((c) => required[c.engine])
+    .filter((t, i, a) => a.indexOf(t) === i)
+    .filter((t) => !tools[t] || tools[t]?.variant === "mariadb");
+
+  const verify = async (b: Backup) => {
+    try { await post(`/backups/${b.id}/verify`); } catch (err: any) { setError(err.message); }
+  };
+  const remove = async (b: Backup) => {
+    const typed = prompt(`Delete this backup permanently? Type the database name "${b.database}" to confirm.`);
+    if (typed === null) return;
+    try { await del(`/backups/${b.id}`, { confirm: typed }); load(); } catch (err: any) { setError(err.message); }
+  };
+
+  return (
+    <>
+      <h1>Backups <button className="primary" onClick={() => setShowNew(true)} disabled={!conns.length || !dests.length}>Backup now</button></h1>
+      {missing.length > 0 && <p className="warn banner">Missing or unsupported client tools on this host: {missing.join(", ")}. Backups for those engines will fail.</p>}
+      {(!conns.length || !dests.length) && <p className="muted">Add a <Link to="/connections">connection</Link> and a <Link to="/destinations">destination</Link> first.</p>}
+      {error && <p className="error">{error}</p>}
+      {Object.values(running).map((o) => (
+        <p key={o.id} className="card">⏳ {o.type} {o.database} — <span className={`status ${o.status}`}>{o.status}</span> <Link to={`/operations/${o.id}`}>log</Link></p>
+      ))}
+      <div className="filters">
+        <select value={filter.connection_id} onChange={(e) => setFilter({ ...filter, connection_id: e.target.value })}>
+          <option value="">All connections</option>
+          {conns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })}>
+          <option value="">ok + corrupted</option>
+          <option value="ok">ok</option>
+          <option value="corrupted">corrupted</option>
+          <option value="deleted">deleted</option>
+        </select>
+      </div>
+      <table>
+        <thead><tr><th>Time</th><th>Connection / database</th><th>Plan</th><th>Size</th><th>SHA-256</th><th>Status</th><th /></tr></thead>
+        <tbody>
+          {list.map((b) => (
+            <tr key={b.id}>
+              <td>{when(b.started_at)}</td>
+              <td>{b.connection_name} / <strong>{b.database}</strong><div className="muted">{b.engine} {b.server_version}</div></td>
+              <td>{b.plan_name || "on-demand"}</td>
+              <td>{bytes(b.size_bytes)}{b.encrypted && " 🔒"}</td>
+              <td><code title={b.sha256}>{b.sha256.slice(0, 12)}…</code></td>
+              <td><span className={`status ${b.status}`}>{b.status}</span></td>
+              <td className="actions">
+                {b.status === "ok" && <button className="primary" onClick={() => setRestore(b)}>Restore</button>}
+                {b.status !== "deleted" && <button onClick={() => verify(b)}>Verify</button>}
+                {b.status !== "deleted" && <button onClick={() => remove(b)}>Delete</button>}
+              </td>
+            </tr>
+          ))}
+          {!list.length && <tr><td colSpan={7} className="muted">No backups.</td></tr>}
+        </tbody>
+      </table>
+      {showNew && <NewBackup conns={conns} dests={dests} onClose={() => setShowNew(false)} onError={setError} />}
+      {restore && <RestoreWizard backup={restore} onClose={() => setRestore(null)} />}
+    </>
+  );
+}
+
+function NewBackup({ conns, dests, onClose, onError }: { conns: Connection[]; dests: Destination[]; onClose: () => void; onError: (s: string) => void }) {
+  const [connId, setConnId] = useState(conns[0]?.id ?? "");
+  const [destId, setDestId] = useState(dests[0]?.id ?? "");
+  const [dbs, setDbs] = useState<string[] | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [encrypt, setEncrypt] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    setDbs(null);
+    setPicked([]);
+    setErr("");
+    if (connId) get<string[]>(`/connections/${connId}/databases`).then(setDbs).catch((e) => { setErr(e.message); setDbs([]); });
+  }, [connId]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await post("/backups", { connection_id: connId, databases: picked, destination_id: destId, passphrase: encrypt ? passphrase : "" });
+      onClose();
+    } catch (er: any) {
+      onError(er.message);
+      onClose();
+    }
+  };
+
+  return (
+    <dialog open>
+      <form onSubmit={submit}>
+        <h2>Backup now</h2>
+        <label>Connection<select value={connId} onChange={(e) => setConnId(e.target.value)}>{conns.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.engine})</option>)}</select></label>
+        <fieldset>
+          <legend>Databases</legend>
+          {dbs === null && <span className="muted">Loading…</span>}
+          {err && <span className="error">{err}</span>}
+          {dbs?.map((d) => (
+            <label key={d} className="inline">
+              <input type="checkbox" checked={picked.includes(d)} onChange={(e) => setPicked(e.target.checked ? [...picked, d] : picked.filter((x) => x !== d))} />{d}
+            </label>
+          ))}
+        </fieldset>
+        <label>Destination<select value={destId} onChange={(e) => setDestId(e.target.value)}>{dests.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+        <label className="inline"><input type="checkbox" checked={encrypt} onChange={(e) => setEncrypt(e.target.checked)} /> Encrypt with passphrase</label>
+        {encrypt && (
+          <>
+            <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} required autoComplete="new-password" placeholder="Passphrase" />
+            <p className="warn">The passphrase is not stored for on-demand backups. Losing it makes the backup unrecoverable.</p>
+          </>
+        )}
+        <div className="actions">
+          <button className="primary" disabled={!picked.length}>Start backup</button>
+          <button type="button" onClick={onClose}>Cancel</button>
+        </div>
+      </form>
+    </dialog>
+  );
+}

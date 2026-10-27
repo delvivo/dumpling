@@ -4,7 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-No application code yet. Repo contains only `LICENSE` (GPL-3.0) and GitHub Spec Kit (v1.2.3) scaffolding. No build, lint, or test commands exist — add them here once a stack is chosen.
+Dumpling: self-hosted web UI for hot backup/restore of PostgreSQL, MySQL and SQL Server databases (inspired by Backrest). Feature `001-db-backup-webui` is implemented; spec/plan/tasks in `specs/001-db-backup-webui/`, principles in `.specify/memory/constitution.md`.
+
+## Commands
+
+```sh
+cd web && npm ci && npm run build && cd ..   # build UI into web/dist/ui (embedded by go:embed)
+go build -o dumpling ./cmd/dumpling          # single binary
+./dumpling --data-dir ./data                 # http://127.0.0.1:9898
+go vet ./... && go test ./...                # unit tests (artifact test streams 2 GiB; -short skips it)
+cd web && npm test                           # Vitest (restoreGate, cronPresets)
+cd web && npm run dev                        # UI dev server, proxies /api to :9898
+
+# integration round-trip on real engines (host lacks client tools → runs in a container)
+docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b
+docker compose -f testdata/compose.yaml run --rm it
+docker compose -f testdata/compose.yaml down
+```
+
+On Git Bash, `docker run -v` paths need `MSYS_NO_PATHCONV=1`.
+
+## Architecture
+
+- `cmd/dumpling` — flags, wiring, startup recovery, scheduler loop, loopback/TLS warning.
+- `internal/store` — SQLite schema (`schema.sql`, embedded) and queries; secrets sealed via `internal/secret` (AES-256-GCM, master key from `DUMPLING_MASTER_KEY` or `<data-dir>/master.key`).
+- `internal/engine` — `Engine` interface with `postgres` (psql/pg_dump/pg_restore, password via `PGPASSWORD`), `mysql` (mysql/mysqldump, credentials via temp `--defaults-extra-file`), `mssql` (go-mssqldb, native BACKUP/RESTORE through a shared directory). Secrets never on argv.
+- `internal/artifact` — streaming pipeline gzip → age → sha256 → `.partial` → link to final name (never overwrites) + JSON sidecar.
+- `internal/runner` — backup/restore/verify/prune operations, in-memory locks (per plan, per restore target), op logs with secret redaction, `Recover()`. Restore validates then checksums before touching the target.
+- `internal/schedule` — cron parsing (robfig/cron), `Keep()` retention, scheduler loop. Imported by runner (retention); scheduler calls runner via a callback to avoid an import cycle.
+- `internal/server` — stdlib mux API per `specs/001-db-backup-webui/contracts/api.md`, session auth + `X-Requested-With: dumpling` CSRF header, SSE hub (`/api/events`), SPA serving.
+- `web/` — Vite + React + TS, plain CSS, `react-router` declarative routes; pages in `web/src/pages/`.
 
 ## Handling change requests (mandatory)
 
@@ -26,7 +55,7 @@ Whenever a change is requested, first ask the user whether to use Spec Kit or pr
 
 Features are built through the Spec Kit skills in `.claude/skills/`, in this order (defined in `.specify/workflows/speckit/workflow.yml`):
 
-1. `/speckit-constitution` — fill in `.specify/memory/constitution.md` (currently an unfilled template; do this first so later steps have project principles to check against)
+1. `/speckit-constitution` — amend `.specify/memory/constitution.md` (v1.0.0 ratified)
 2. `/speckit-specify <description>` — creates a sequentially numbered feature directory with `spec.md`
 3. `/speckit-clarify` (optional) — resolve underspecified areas in the spec
 4. `/speckit-plan` — produces `plan.md` and design artifacts
