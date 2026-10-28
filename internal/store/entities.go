@@ -166,20 +166,31 @@ type Plan struct {
 	Paused        bool      `json:"paused"`
 	CreatedAt     string    `json:"created_at"`
 	UpdatedAt     string    `json:"updated_at"`
+	IncrSchedule  string    `json:"incr_schedule"` // "" = incremental mode off
+	MaxChain      int       `json:"max_chain"`     // incrementals per chain before a forced full
+	ChainResetAt  string    `json:"-"`             // chains whose full started earlier are closed
+	IncrAckAt     string    `json:"incr_ack_at"`   // mssql/mysql: incremental risk acknowledged
 
 	passphrase string // decrypted, for runner use
 }
 
+// ClusterDB is the database of a PostgreSQL server-wide (physical) plan and its backups.
+const ClusterDB = "*"
+
+// Incremental reports whether the plan runs in incremental mode.
+func (p Plan) Incremental() bool { return p.IncrSchedule != "" }
+
 // PassphrasePlain returns the decrypted stored passphrase ("" if not encrypted).
 func (p Plan) PassphrasePlain() string { return p.passphrase }
 
-const planCols = `id,name,connection_id,databases,destination_id,schedule,retention,passphrase,paused,created_at,updated_at`
+const planCols = `id,name,connection_id,databases,destination_id,schedule,retention,passphrase,paused,created_at,updated_at,
+	incr_schedule,max_chain,chain_reset_at,incr_ack_at`
 
 func (s *Store) scanPlan(row interface{ Scan(...any) error }) (Plan, error) {
 	var p Plan
 	var dbs, ret, sealed string
 	if err := row.Scan(&p.ID, &p.Name, &p.ConnectionID, &dbs, &p.DestinationID, &p.Schedule, &ret, &sealed,
-		&p.Paused, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		&p.Paused, &p.CreatedAt, &p.UpdatedAt, &p.IncrSchedule, &p.MaxChain, &p.ChainResetAt, &p.IncrAckAt); err != nil {
 		return p, wrap(err)
 	}
 	json.Unmarshal([]byte(dbs), &p.Databases)
@@ -216,6 +227,9 @@ func (s *Store) SavePlan(p *Plan) error {
 	dbs, _ := json.Marshal(p.Databases)
 	ret, _ := json.Marshal(p.Retention)
 	now := Now()
+	if p.MaxChain <= 0 {
+		p.MaxChain = 30
+	}
 	if p.ID == "" {
 		pass := ""
 		if p.Passphrase != nil {
@@ -226,12 +240,15 @@ func (s *Store) SavePlan(p *Plan) error {
 			return err
 		}
 		p.ID, p.CreatedAt, p.UpdatedAt = NewID(), now, now
-		_, err = s.DB.Exec(`INSERT INTO plans(`+planCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			p.ID, p.Name, p.ConnectionID, string(dbs), p.DestinationID, p.Schedule, string(ret), sealed, p.Paused, now, now)
+		_, err = s.DB.Exec(`INSERT INTO plans(`+planCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			p.ID, p.Name, p.ConnectionID, string(dbs), p.DestinationID, p.Schedule, string(ret), sealed, p.Paused, now, now,
+			p.IncrSchedule, p.MaxChain, p.ChainResetAt, p.IncrAckAt)
 		return wrap(err)
 	}
-	res, err := s.DB.Exec(`UPDATE plans SET name=?,connection_id=?,databases=?,destination_id=?,schedule=?,retention=?,paused=?,updated_at=? WHERE id=?`,
-		p.Name, p.ConnectionID, string(dbs), p.DestinationID, p.Schedule, string(ret), p.Paused, now, p.ID)
+	res, err := s.DB.Exec(`UPDATE plans SET name=?,connection_id=?,databases=?,destination_id=?,schedule=?,retention=?,paused=?,updated_at=?,
+		incr_schedule=?,max_chain=?,chain_reset_at=?,incr_ack_at=? WHERE id=?`,
+		p.Name, p.ConnectionID, string(dbs), p.DestinationID, p.Schedule, string(ret), p.Paused, now,
+		p.IncrSchedule, p.MaxChain, p.ChainResetAt, p.IncrAckAt, p.ID)
 	if err == nil {
 		err = mustAffect(res)
 	}
@@ -283,24 +300,34 @@ type Backup struct {
 	Imported       bool   `json:"imported"`       // created by a destination rescan
 	OriginPlanID   string `json:"origin_plan_id"` // plan id recorded in the sidecar (imported backups)
 	Locked         bool   `json:"locked"`         // imported, encrypted, passphrase unknown
+	Kind           string `json:"kind"`           // full | incr
+	ChainID        string `json:"chain_id"`       // id of the chain's full; "" = standalone backup
+	ParentID       string `json:"parent_id"`      // link this one applies on top of ("" for fulls)
+	Seq            int    `json:"seq"`            // position in chain, 0 = full
+	Marker         string `json:"marker"`         // engine resume state (JSON)
 	// Set by the API layer:
 	DestinationType string `json:"destination_type"`
 	Location        string `json:"location"`
+	ChainOK         bool   `json:"chain_ok"` // every link this backup depends on exists and is ok
 
 	passphrase string // decrypted, set by Unlock
 }
+
+// Physical reports whether the artifact is a PostgreSQL base backup (tar) rather than a dump.
+func (b Backup) Physical() bool { return b.Engine == "postgres" && b.ChainID != "" }
 
 // PassphrasePlain returns the passphrase stored by Unlock ("" if none).
 func (b Backup) PassphrasePlain() string { return b.passphrase }
 
 const backupCols = `id,COALESCE(operation_id,''),COALESCE(plan_id,''),plan_name,COALESCE(connection_id,''),connection_name,engine,
-	server_version,database,destination_id,path,size_bytes,sha256,encrypted,status,started_at,finished_at,imported,origin_plan_id,passphrase`
+	server_version,database,destination_id,path,size_bytes,sha256,encrypted,status,started_at,finished_at,imported,origin_plan_id,passphrase,
+	kind,chain_id,parent_id,seq,marker`
 
 func (s *Store) scanBackup(row interface{ Scan(...any) error }) (b Backup, err error) {
 	var sealed string
 	if err = wrap(row.Scan(&b.ID, &b.OperationID, &b.PlanID, &b.PlanName, &b.ConnectionID, &b.ConnectionName, &b.Engine,
 		&b.ServerVersion, &b.Database, &b.DestinationID, &b.Path, &b.SizeBytes, &b.SHA256, &b.Encrypted, &b.Status, &b.StartedAt,
-		&b.FinishedAt, &b.Imported, &b.OriginPlanID, &sealed)); err != nil {
+		&b.FinishedAt, &b.Imported, &b.OriginPlanID, &sealed, &b.Kind, &b.ChainID, &b.ParentID, &b.Seq, &b.Marker)); err != nil {
 		return
 	}
 	b.passphrase, err = s.Box.Open(sealed)
@@ -312,12 +339,16 @@ func (s *Store) InsertBackup(b *Backup) error {
 	if b.ID == "" {
 		b.ID = NewID()
 	}
+	if b.Kind == "" {
+		b.Kind = "full"
+	}
 	_, err := s.DB.Exec(`INSERT INTO backups(id,operation_id,plan_id,plan_name,connection_id,connection_name,engine,server_version,
-		database,destination_id,path,size_bytes,sha256,encrypted,status,started_at,finished_at,imported,origin_plan_id)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		database,destination_id,path,size_bytes,sha256,encrypted,status,started_at,finished_at,imported,origin_plan_id,
+		kind,chain_id,parent_id,seq,marker)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.ID, null(b.OperationID), null(b.PlanID), b.PlanName, null(b.ConnectionID), b.ConnectionName, b.Engine, b.ServerVersion,
 		b.Database, b.DestinationID, b.Path, b.SizeBytes, b.SHA256, b.Encrypted, b.Status, b.StartedAt, b.FinishedAt,
-		b.Imported, b.OriginPlanID)
+		b.Imported, b.OriginPlanID, b.Kind, b.ChainID, b.ParentID, b.Seq, b.Marker)
 	b.Locked = b.Imported && b.Encrypted
 	return err
 }

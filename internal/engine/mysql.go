@@ -80,15 +80,9 @@ func mysqldumpArgs(def, db string) []string {
 }
 
 func (m mysql) Backup(ctx context.Context, c Conn, db string, w io.Writer, log io.Writer) ([]string, error) {
-	var warnings []string
-	out, err := m.sql(ctx, c, "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA="+myLit(db)+
-		" AND TABLE_TYPE='BASE TABLE' AND ENGINE<>'InnoDB';\n")
+	warnings, err := m.nonInnoDB(ctx, c, db, log)
 	if err != nil {
 		return nil, err
-	}
-	if l := lines(out); len(l) > 0 {
-		warnings = append(warnings, "non-transactional tables are not snapshot-consistent: "+strings.Join(l, ", "))
-		fmt.Fprintln(log, "warning:", warnings[0])
 	}
 	return warnings, withDefaults(c, func(def string) error {
 		return run(ctx, "mysqldump", mysqldumpArgs(def, db), nil, nil, w, log)

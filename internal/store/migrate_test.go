@@ -47,8 +47,17 @@ func TestMigrateFromOldSchema(t *testing.T) {
 	}
 	var v int
 	st.DB.QueryRow(`PRAGMA user_version`).Scan(&v)
-	if v != len(migrations) {
+	if v != len(migrations) || v != 2 {
 		t.Fatalf("user_version %d", v)
+	}
+	var kind string
+	var maxChain int
+	if err := st.DB.QueryRow(`SELECT (SELECT dflt_value FROM pragma_table_info('backups') WHERE name='kind'),
+		(SELECT dflt_value FROM pragma_table_info('plans') WHERE name='max_chain')`).Scan(&kind, &maxChain); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "'full'" || maxChain != 30 {
+		t.Fatalf("migration 2 defaults: kind=%s max_chain=%d", kind, maxChain)
 	}
 	st.DB.Close()
 	openTest(t, path) // reopening is a no-op

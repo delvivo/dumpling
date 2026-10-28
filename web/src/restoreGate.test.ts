@@ -13,6 +13,14 @@ describe("canRestore", () => {
     expect(canRestore({ ...g, typedConfirmation: "SHOP_COPY" })).toBe(false);
     expect(canRestore({ ...g, typedConfirmation: "shop_copy" })).toBe(true);
   });
+  it("never restores a broken chain", () => {
+    expect(canRestore({ ...base, chainError: "link x is corrupted" })).toBe(false);
+  });
+  it("requires an accepted folder for a directory restore", () => {
+    const g = { ...base, physical: true, targetExists: true };
+    expect(canRestore({ ...g, targetPathOk: false })).toBe(false);
+    expect(canRestore({ ...g, targetPathOk: true })).toBe(true);
+  });
   it("requires a passphrase when needed", () => {
     expect(canRestore({ ...base, passphraseRequired: true })).toBe(false);
     expect(canRestore({ ...base, passphraseRequired: true, passphrase: "x" })).toBe(true);

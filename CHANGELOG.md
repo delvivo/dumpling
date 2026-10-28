@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Incremental backups (feature `003-incremental-backups`): plans get an incremental schedule and a
+  maximum chain length. SQL Server native differentials, MySQL binary-log incrementals replayed into
+  any target name, PostgreSQL 17 physical incremental base backups of the whole server rebuilt with
+  `pg_combinebackup` into a confined restore folder (`--restore-dir` / `DUMPLING_RESTORE_DIR`).
+  Chains are recorded per backup (type, chain, parent) in history and sidecars; restore and verify
+  check every link first; retention never removes a link a kept backup needs; deleting a base asks
+  to delete its dependents. Invalid incrementals fall back to a full with the reason logged; lost
+  prerequisites give a full plus a warning. SQL Server and MySQL require an explicit
+  acknowledgment (differential base / brief global read lock, with a 10 s pre-check and 5 s
+  lock watchdog).
+- Constitution v1.1.0: bounded exception to Principle III for a brief, acknowledged global lock.
 - Configurable log level (`--log-level` / `DUMPLING_LOG_LEVEL`: debug, info, warn, error; default info).
   Operations log start and outcome (failures as errors), failed and rate-limited logins log as
   warnings; at debug level every HTTP request (method, path, status, duration) and the scheduler's

@@ -28,10 +28,21 @@ export interface Plan {
   id: string; name: string; connection_id: string; databases: string[]; destination_id: string;
   schedule: string; retention: Retention; encrypted: boolean; paused: boolean; passphrase?: string;
   next_run?: string; last_operation?: Operation | null;
+  incr_schedule: string; max_chain: number; incr_ack_at?: string; next_incr_run?: string;
+  ack_incremental_risk?: boolean;
 }
 export interface Backup {
   id: string; operation_id: string; plan_id: string; plan_name: string; connection_id: string; connection_name: string;
   engine: Engine; server_version: string; database: string; destination_id: string; path: string;
   size_bytes: number; sha256: string; encrypted: boolean; status: string; started_at: string; finished_at: string;
   imported: boolean; locked: boolean; destination_type: DestinationType; location: string;
+  kind: "full" | "incr"; chain_id: string; parent_id: string; seq: number; marker: string; chain_ok: boolean;
+}
+/** Database value of a PostgreSQL server-wide (physical) plan or backup. */
+export const CLUSTER_DB = "*";
+export const dbLabel = (db: string) => (db === CLUSTER_DB ? "Entire server" : db);
+export interface ChainLink { id: string; kind: "full" | "incr"; seq: number; status: string; started_at: string }
+export interface Preflight {
+  target_exists: boolean; version_warning?: string; passphrase_required: boolean; passphrase_link?: string;
+  chain?: ChainLink[]; chain_error?: string; target_path_ok?: boolean; physical?: boolean;
 }

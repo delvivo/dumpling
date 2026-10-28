@@ -69,3 +69,26 @@ func TestValidRetention(t *testing.T) {
 		t.Fatal("validation")
 	}
 }
+
+func TestClosure(t *testing.T) {
+	// linear chain full ← i1 ← i2 ← i3 (mysql/postgres) and a star chain F ← d1, F ← d2 (mssql)
+	all := []store.Backup{
+		{ID: "full"}, {ID: "i1", ParentID: "full"}, {ID: "i2", ParentID: "i1"}, {ID: "i3", ParentID: "i2"},
+		{ID: "F"}, {ID: "d1", ParentID: "F"}, {ID: "d2", ParentID: "F"},
+	}
+	got := Closure(map[string]bool{"i2": true, "d2": true}, all)
+	for _, id := range []string{"i2", "i1", "full", "d2", "F"} {
+		if !got[id] {
+			t.Errorf("%s not kept", id)
+		}
+	}
+	for _, id := range []string{"i3", "d1"} {
+		if got[id] {
+			t.Errorf("%s kept", id)
+		}
+	}
+	// dropping the full leaves no kept dependent
+	if got := Closure(map[string]bool{}, all); len(got) != 0 {
+		t.Fatalf("kept %v", got)
+	}
+}

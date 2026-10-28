@@ -22,6 +22,8 @@ type Runner struct {
 	St      *store.Store
 	DataDir string
 	Publish func(event string, v any) // SSE fan-out; may be nil
+	// RestoreDir confines PostgreSQL physical restores ("" = <DataDir>/restores).
+	RestoreDir string
 
 	ctx   context.Context
 	wg    sync.WaitGroup
@@ -195,15 +197,20 @@ func (r *Runner) Recover() error {
 		o := &ops[i]
 		for _, cid := range []string{o.ConnectionID, o.TargetConnectionID} {
 			if c, err := r.St.Connection(cid); err == nil && c.Engine == "mssql" && c.SharePathLocal != "" {
-				os.Remove(filepath.Join(c.SharePathLocal, "dumpling-"+o.ID+".bak"))
+				leftovers, _ := filepath.Glob(filepath.Join(c.SharePathLocal, "dumpling-"+o.ID+"*.bak")) // chain restores: -<i>.bak
+				for _, f := range leftovers {
+					os.Remove(f)
+				}
 			}
 		}
 		o.Status, o.Message, o.FinishedAt = "interrupted", "process stopped while operation was running", store.Now()
 		r.St.UpdateOperation(o)
 	}
-	if tmps, err := filepath.Glob(filepath.Join(r.DataDir, "tmp", "*"+tmpSuffix)); err == nil {
+	// nothing runs yet: every temp entry (downloads, decoded payloads, manifests, extracted
+	// chain directories, credential files) is a leftover
+	if tmps, err := filepath.Glob(filepath.Join(r.DataDir, "tmp", "*")); err == nil {
 		for _, p := range tmps {
-			os.Remove(p)
+			os.RemoveAll(p)
 		}
 	}
 	dests, err := r.St.Destinations()

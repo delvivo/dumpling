@@ -2,9 +2,11 @@ package runner
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/delvivo/dumpling/internal/artifact"
@@ -32,24 +34,64 @@ func (r *Runner) StartVerify(backupID string) (string, error) {
 		if err != nil {
 			return
 		}
-		sum, err := r.checksum(dest, b, o.ID, l)
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			r.St.SetBackupStatus(b.ID, "corrupted")
-			r.finish(o, l, "failed", "artifact missing: backup marked corrupted")
-		case err != nil: // network/auth/IO: the artifact may be fine, keep its status (FR-010)
-			r.finish(o, l, "failed", "destination unreachable: "+err.Error())
-		case sum != b.SHA256:
-			r.St.SetBackupStatus(b.ID, "corrupted")
-			r.finish(o, l, "failed", "checksum mismatch: backup marked corrupted")
-		default:
-			if b.Status == "corrupted" { // file was repaired/restored from elsewhere
-				r.St.SetBackupStatus(b.ID, "ok")
+		// a chain link is only as good as the links it depends on: verify all of them (FR-012)
+		links, missing := []store.Backup{b}, ""
+		for id := b.ParentID; id != ""; {
+			p, err := r.St.Backup(id)
+			if err != nil || p.Status == "deleted" {
+				missing = id
+				break
 			}
-			r.finish(o, l, "success", "checksum ok "+sum)
+			links = append([]store.Backup{p}, links...)
+			id = p.ParentID
+		}
+		if len(links) == 1 && missing == "" {
+			status, msg := r.verifyOne(dest, b, o.ID, l)
+			r.finish(o, l, status, msg)
+			return
+		}
+		var report []string
+		failed := missing != ""
+		if missing != "" {
+			report = append(report, "link "+missing+": missing")
+		}
+		for i, lk := range links {
+			status, msg := r.verifyOne(dest, lk, fmt.Sprintf("%s-%d", o.ID, i), l)
+			failed = failed || status != "success"
+			report = append(report, fmt.Sprintf("link %s (%s #%d): %s", lk.ID, lk.Kind, lk.Seq, msg))
+			l.Printf("%s", report[len(report)-1])
+		}
+		if failed {
+			r.finish(o, l, "failed", "chain not restorable: "+strings.Join(report, "; "))
+		} else {
+			r.finish(o, l, "success", fmt.Sprintf("all %d links ok", len(links)))
 		}
 	})
 	return o.ID, nil
+}
+
+// verifyOne re-checks one artifact's checksum and updates its status; returns op status + message.
+func (r *Runner) verifyOne(dest store.Destination, b store.Backup, opID string, l *OpLog) (string, string) {
+	if dest.ID != b.DestinationID {
+		if d, err := r.St.Destination(b.DestinationID); err == nil {
+			dest = d
+		}
+	}
+	sum, err := r.checksum(dest, b, opID, l)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		r.St.SetBackupStatus(b.ID, "corrupted")
+		return "failed", "artifact missing: backup marked corrupted"
+	case err != nil: // network/auth/IO: the artifact may be fine, keep its status (FR-010)
+		return "failed", "destination unreachable: " + err.Error()
+	case sum != b.SHA256:
+		r.St.SetBackupStatus(b.ID, "corrupted")
+		return "failed", "checksum mismatch: backup marked corrupted"
+	}
+	if b.Status == "corrupted" { // file was repaired/restored from elsewhere
+		r.St.SetBackupStatus(b.ID, "ok")
+	}
+	return "success", "checksum ok " + sum
 }
 
 // checksum fetches a backup's artifact (temp download for remote destinations) and hashes it.
@@ -92,17 +134,35 @@ func (r *Runner) deleteBackup(b store.Backup) error {
 		return err
 	}
 	defer dst.Close()
+	r.removeManifest(dst, b)
 	return r.deleteFiles(dst, b)
 }
 
-// DeleteBackup deletes a backup after the caller confirmed by typing its database name.
-func (r *Runner) DeleteBackup(id, confirm string) error {
+// DeleteBackup deletes a backup after the caller confirmed by typing its database name. Backups
+// that depend on it are deleted too, but only when cascade confirms it (FR-013).
+func (r *Runner) DeleteBackup(id, confirm string, cascade bool) error {
 	b, err := r.St.Backup(id)
 	if err != nil || b.Status == "deleted" {
 		return errf(http.StatusNotFound, "not_found", "backup not found")
 	}
 	if confirm != b.Database {
 		return errf(http.StatusConflict, "confirmation_required", "type the database name %q to confirm deletion", b.Database)
+	}
+	deps, err := r.St.Dependents(b.ID)
+	if err != nil {
+		return err
+	}
+	if len(deps) > 0 && !cascade {
+		e := errf(http.StatusConflict, "has_dependents", "%d incremental backup(s) depend on this backup and would be deleted with it", len(deps))
+		e.Extra = map[string]any{"dependents": len(deps)}
+		return e
+	}
+	// newest links first: an interrupted delete never leaves an incremental without its base
+	sort.Slice(deps, func(i, j int) bool { return deps[i].Seq > deps[j].Seq })
+	for _, d := range deps {
+		if err := r.deleteBackup(d); err != nil {
+			return err
+		}
 	}
 	return r.deleteBackup(b)
 }
@@ -113,11 +173,32 @@ func (r *Runner) prune(p store.Plan, newest store.Backup) {
 	if err != nil {
 		return
 	}
-	keep := schedule.Keep(all, p.Retention)
 	var drop []store.Backup
-	for _, b := range all {
-		if !keep[b.ID] && b.ID != newest.ID {
-			drop = append(drop, b)
+	if p.Incremental() { // chains are per database: keep every link a kept backup needs (FR-013)
+		byDB := map[string][]store.Backup{}
+		for _, b := range all {
+			byDB[b.Database] = append(byDB[b.Database], b)
+		}
+		for db, group := range byDB {
+			kept := schedule.Keep(group, p.Retention)
+			if db == newest.Database {
+				kept[newest.ID] = true
+			}
+			keep := schedule.Closure(kept, group)
+			for _, b := range group {
+				if !keep[b.ID] {
+					drop = append(drop, b)
+				}
+			}
+		}
+		// dependents first, so an interrupted prune never leaves an incremental without its base
+		sort.Slice(drop, func(i, j int) bool { return drop[i].Seq > drop[j].Seq })
+	} else {
+		keep := schedule.Keep(all, p.Retention)
+		for _, b := range all {
+			if !keep[b.ID] && b.ID != newest.ID {
+				drop = append(drop, b)
+			}
 		}
 	}
 	if len(drop) == 0 {
@@ -153,6 +234,7 @@ func (r *Runner) prune(p store.Plan, newest store.Backup) {
 			}
 			backends[b.DestinationID] = dst
 		}
+		r.removeManifest(dst, b)
 		if err := r.deleteFiles(dst, b); err != nil {
 			failed = append(failed, b.Path)
 			l.Printf("delete %s (%s): %v", b.Path, b.ID, err)

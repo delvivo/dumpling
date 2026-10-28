@@ -16,6 +16,17 @@ var migrations = [][]string{
 		`ALTER TABLE backups ADD COLUMN origin_plan_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE backups ADD COLUMN passphrase TEXT NOT NULL DEFAULT ''`,
 	},
+	{ // 2: incremental backups (003-incremental-backups)
+		`ALTER TABLE plans ADD COLUMN incr_schedule TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE plans ADD COLUMN max_chain INTEGER NOT NULL DEFAULT 30`,
+		`ALTER TABLE plans ADD COLUMN chain_reset_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE plans ADD COLUMN incr_ack_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE backups ADD COLUMN kind TEXT NOT NULL DEFAULT 'full'`,
+		`ALTER TABLE backups ADD COLUMN chain_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE backups ADD COLUMN parent_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE backups ADD COLUMN seq INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE backups ADD COLUMN marker TEXT NOT NULL DEFAULT ''`,
+	},
 }
 
 func migrate(db *sql.DB) error {

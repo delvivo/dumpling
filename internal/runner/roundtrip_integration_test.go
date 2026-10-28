@@ -275,7 +275,7 @@ func remoteRoundTrip(t *testing.T, ec engineCase, dest store.Destination) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {
-		r.RunPlan(plan)
+		r.RunPlan(plan, "full")
 		r.Wait()
 		time.Sleep(1100 * time.Millisecond) // distinct started_at seconds
 	}

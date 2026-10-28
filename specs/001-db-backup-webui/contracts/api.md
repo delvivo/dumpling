@@ -6,6 +6,9 @@ Errors: `{"error": "<human message>", "code": "<machine_code>"}` with 4xx/5xx; m
 contain secrets. Secret fields (`password`, `passphrase`) are write-only: responses expose
 `"password_set": true` / `"encrypted": true` instead. Omitting a secret on PUT keeps the stored value.
 
+> Feature 003 (incremental backups) extends plans, backups, restores and backup deletion: see
+> `specs/003-incremental-backups/contracts/api.md`.
+
 ## Auth & setup
 
 | Method | Path | Body | Response |
