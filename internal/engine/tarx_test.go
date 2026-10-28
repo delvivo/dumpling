@@ -3,6 +3,7 @@ package engine
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,5 +75,20 @@ func TestPgBasebackupArgs(t *testing.T) {
 	}
 	if got := strings.Join(pgBasebackupArgs("/m/1"), " "); !strings.HasSuffix(got, "--incremental=/m/1") {
 		t.Fatalf("incremental: %s", got)
+	}
+}
+
+func TestSummaryGap(t *testing.T) {
+	// verbatim pg_basebackup 17 output when the summaries were deleted (reproduced on pg-a)
+	gap := errors.New(`pg_basebackup: error: could not initiate base backup: ERROR:  WAL summaries are required on timeline 1 from 0/11000028 to 0/16000028, but the summaries for that timeline and LSN range are incomplete`)
+	if err := summaryGap(gap, true); !errors.Is(err, ErrChainBroken) {
+		t.Fatalf("incremental gap not a broken chain: %v", err)
+	}
+	if err := summaryGap(gap, false); errors.Is(err, ErrChainBroken) {
+		t.Fatal("full backup error mapped to a broken chain")
+	}
+	other := errors.New("pg_basebackup: error: connection to server failed")
+	if err := summaryGap(other, true); errors.Is(err, ErrChainBroken) {
+		t.Fatal("unrelated error mapped to a broken chain")
 	}
 }

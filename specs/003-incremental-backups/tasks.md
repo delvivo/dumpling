@@ -156,6 +156,8 @@ same chain machinery.
   - `CHANGELOG.md`: feature entry
 - [X] T052 Run `go vet ./... && go test ./...`, `cd web && npm test && npm run build`, compose `it` round-trips; walk quickstart.md
 
+- [X] T053 [US5] Map the PostgreSQL refusal of an incremental whose WAL summaries are gone ("WAL summaries are required on timeline … incomplete" / "… no summaries … exist", e.g. after `wal_summary_keep_time`) to `ErrChainBroken` so the runner takes a full, in `internal/engine/postgres_incr.go` (`summaryGap`); test with the verbatim server message in `internal/engine/tarx_test.go`; update the README version limits
+
 ---
 
 ## Dependencies & execution order

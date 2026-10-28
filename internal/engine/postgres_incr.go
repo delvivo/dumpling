@@ -136,10 +136,21 @@ func (p postgres) basebackup(ctx context.Context, c Conn, wantID, manifest strin
 		err = ferr
 	}
 	if err != nil {
-		return "", nil, err
+		return "", nil, summaryGap(err, manifest != "")
 	}
 	mk, _ := json.Marshal(pgMarker{SystemID: id})
 	return string(mk), nil, nil
+}
+
+// summaryGap maps the server's refusal of an incremental whose WAL summaries are gone (removed
+// after wal_summary_keep_time, or never written for that range) to ErrChainBroken, so the runner
+// takes a full instead of failing. PostgreSQL 17 words it "WAL summaries are required on timeline
+// … but the summaries for that timeline and LSN range are incomplete" (or "… no summaries … exist").
+func summaryGap(err error, incremental bool) error {
+	if incremental && strings.Contains(err.Error(), "WAL summaries are required") {
+		return fmt.Errorf("%w: WAL summaries since the previous link are no longer available (gap between incrementals longer than wal_summary_keep_time?): %v", ErrChainBroken, err)
+	}
+	return err
 }
 
 // RestoreChain rebuilds a data directory at target (absolute, missing or empty, inside the
