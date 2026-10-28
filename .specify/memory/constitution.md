@@ -1,17 +1,13 @@
 <!--
 Sync Impact Report
-- Version change: (unfilled template) → 1.0.0
-- Principles defined (initial):
-  I. Data Integrity (NON-NEGOTIABLE)
-  II. Safe Restore
-  III. Hot Backup, Zero Downtime
-  IV. Credential Security
-  V. Simplicity
-  VI. Tests for Non-Trivial Logic
-- Added sections: Technology & Distribution Constraints, Development Workflow, Governance
+- Version change: 1.0.0 → 1.1.0 (MINOR: materially expanded guidance in Principle III)
+- Modified principles: III. Hot Backup, Zero Downtime (added bounded exception for a brief
+  global lock at backup start: opt-in, acknowledged, abort instead of stall)
+- Added sections: none
 - Removed sections: none
 - Templates: none modified (templates read the constitution at runtime)
 - Deferred TODOs: none
+- Trigger: feature 003-incremental-backups (MySQL binlog position via mysqldump --source-data)
 -->
 
 # Dumpling Constitution
@@ -51,6 +47,10 @@ Rationale: restore is the moment of highest risk; wrong-target mistakes are irre
   `--single-transaction` for InnoDB, native `BACKUP DATABASE` for SQL Server).
 - Engine-specific limitations (e.g. non-transactional MySQL tables) MUST be documented and
   surfaced, not hidden.
+- A brief global lock at backup start is permitted only when an engine offers no lock-free way to
+  record a consistent replay position, the user explicitly opts in (acknowledgment stored with the
+  plan), and the backup aborts instead of stalling writes when the lock cannot be acquired
+  promptly.
 
 ### IV. Credential Security
 
@@ -99,4 +99,4 @@ Rationale: restore is the moment of highest risk; wrong-target mistakes are irre
 - Reviews MUST verify compliance with Principles I–IV; added complexity MUST be justified.
 - Runtime development guidance lives in `CLAUDE.md`.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-27 | **Last Amended**: 2026-10-27
+**Version**: 1.1.0 | **Ratified**: 2026-10-27 | **Last Amended**: 2026-10-28
