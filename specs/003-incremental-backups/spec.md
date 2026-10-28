@@ -192,6 +192,9 @@ incremental, restore the chain per the chosen restore model, and confirm data ma
 - Prerequisite lost after enabling (binary logging turned off, replication privilege revoked, WAL
   summarization disabled) → every incremental run becomes a full backup flagged "prerequisite
   missing" until fixed; incremental mode is not silently disabled.
+- PostgreSQL WAL summaries since the previous link were removed (gap between incrementals longer
+  than the server's summary retention) → the incremental is refused by the server; the run takes a
+  full backup instead, with the reason logged.
 - An incremental run produces no changes → still recorded as a valid (small) link.
 - Restore chosen at a full backup in incremental mode → behaves as a plain full restore.
 - Restore of a chain fails midway → a target created by the restore is removed; an overwritten
@@ -213,7 +216,8 @@ incremental, restore the chain per the chosen restore model, and confirm data ma
 - **FR-004**: An incremental MUST only be reported successful when its parent chain is valid and the
   artifact was fully written and checksummed.
 - **FR-005**: When an incremental cannot be produced validly (no full yet, base changed outside
-  Dumpling, log gap, configuration change, chain-length limit reached (FR-017)), the system MUST
+  Dumpling, log gap, PostgreSQL WAL summaries no longer available, configuration change,
+  chain-length limit reached (FR-017)), the system MUST
   take a full backup instead and record the reason in the operation log.
 - **FR-006**: The system MUST check engine/server prerequisites when incremental mode is enabled and
   at each run, and report the specific missing prerequisite; it MUST refuse to enable incremental

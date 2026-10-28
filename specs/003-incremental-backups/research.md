@@ -31,7 +31,10 @@ All Technical Context unknowns resolved below. Format: Decision / Rationale / Al
   4. prerequisite check fails → full + operation status `warning`, message
      `prerequisite missing: <what>` (shown in history and on the plan via `last_operation`);
   5. engine detects a broken base at capture (`engine.ErrChainBroken`: SQL Server base GUID differs,
-     MySQL start binlog purged, or the server identity in the marker — `@@server_uuid`,
+     MySQL start binlog purged, PostgreSQL WAL summaries since the previous link gone — the server
+     answers "WAL summaries are required on timeline … but the summaries for that timeline and LSN
+     range are incomplete" (or "… no summaries … exist"), reproduced by deleting
+     `pg_wal/summaries` after a full — or the server identity in the marker — `@@server_uuid`,
      `pg_control_system().system_identifier` — differs from the server reached now) → upload of the
      incremental is aborted and a full runs in the same operation.
 - **Rationale**: Every invalid case ends in a protecting full, never in a link that cannot restore
