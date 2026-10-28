@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { bytes, del, get, post, when } from "../api";
+import { ApiError, bytes, del, get, post, when } from "../api";
 import { useEvents } from "../events";
-import type { Backup, Connection, Destination, Operation } from "../types";
+import { dbLabel, type Backup, type Connection, type Destination, type Operation } from "../types";
 import Modal, { Confirm } from "../Modal";
 import RestoreWizard from "./RestoreWizard";
 
@@ -20,6 +20,7 @@ export default function Backups() {
   const [restore, setRestore] = useState<Backup | null>(null);
   const [unlock, setUnlock] = useState<Backup | null>(null);
   const [deleting, setDeleting] = useState<Backup | null>(null);
+  const [cascade, setCascade] = useState<{ backup: Backup; typed: string; dependents: number } | null>(null);
   const [error, setError] = useState("");
 
   const load = () => {
@@ -54,9 +55,18 @@ export default function Backups() {
   const verify = async (b: Backup) => {
     try { await post(`/backups/${b.id}/verify`); } catch (err: any) { setError(err.message); }
   };
-  const remove = async (b: Backup, typed: string) => {
-    try { await del(`/backups/${b.id}`, { confirm: typed }); load(); } catch (err: any) { setError(err.message); }
+  const remove = async (b: Backup, typed: string, withDependents = false) => {
+    try {
+      await del(`/backups/${b.id}`, { confirm: typed, cascade: withDependents });
+      load();
+    } catch (err: any) {
+      // incrementals depend on it: ask again, naming how many go with it (FR-013)
+      if (err instanceof ApiError && err.code === "has_dependents") setCascade({ backup: b, typed, dependents: err.body?.dependents ?? 0 });
+      else setError(err.message);
+    }
   };
+  const kindLabel = (b: Backup) => (b.kind === "incr" ? `Incremental #${b.seq}` : b.chain_id ? "Full (chain base)" : "Full");
+  const base = (b: Backup) => list.find((x) => x.id === b.chain_id);
 
   return (
     <>
@@ -82,26 +92,31 @@ export default function Backups() {
         </select>
       </div>
       <table role="table">
-        <thead role="rowgroup"><tr role="row"><th role="columnheader">Time</th><th role="columnheader">Connection / database</th><th role="columnheader">Plan</th><th role="columnheader">Destination</th><th role="columnheader">Size</th><th role="columnheader">SHA-256</th><th role="columnheader">Status</th><th role="columnheader" aria-label="Actions" /></tr></thead>
+        <thead role="rowgroup"><tr role="row"><th role="columnheader">Time</th><th role="columnheader">Connection / database</th><th role="columnheader">Plan</th><th role="columnheader">Type</th><th role="columnheader">Destination</th><th role="columnheader">Size</th><th role="columnheader">SHA-256</th><th role="columnheader">Status</th><th role="columnheader" aria-label="Actions" /></tr></thead>
         <tbody role="rowgroup">
           {list.map((b) => (
             <tr role="row" key={b.id}>
               <td role="cell" data-label="Time">{when(b.started_at)}</td>
-              <td role="cell" data-label="Database">{b.connection_name} / <strong>{b.database}</strong><div className="muted">{b.engine} {b.server_version}</div></td>
+              <td role="cell" data-label="Database">{b.connection_name} / <strong>{dbLabel(b.database)}</strong><div className="muted">{b.engine} {b.server_version}</div></td>
               <td role="cell" data-label="Plan">{b.plan_name || (b.imported ? "–" : "on-demand")}{b.imported && <div><span className="status">imported</span></div>}</td>
+              <td role="cell" data-label="Type">
+                {kindLabel(b)}
+                {b.kind === "incr" && <div className="muted">base {base(b) ? when(base(b)!.started_at) : <code title={b.chain_id}>{b.chain_id.slice(-6)}</code>}</div>}
+                {!b.chain_ok && <div><span className="status failed" title="A backup this one depends on is missing or corrupted: it cannot be restored">broken chain</span></div>}
+              </td>
               <td role="cell" data-label="Destination"><span className="status">{b.destination_type}</span> <code className="muted" title={b.location}>{b.location}</code></td>
               <td role="cell" data-label="Size">{bytes(b.size_bytes)}{b.encrypted && <span role="img" aria-label="encrypted" title="encrypted"> 🔒</span>}{b.locked && <div><span className="status warning">locked</span></div>}</td>
               <td role="cell" data-label="SHA-256"><code title={b.sha256}>{b.sha256.slice(0, 12)}…</code></td>
               <td role="cell" data-label="Status"><span className={`status ${b.status}`}>{b.status}</span></td>
               <td role="cell" className="actions">
                 {b.status === "ok" && b.locked && <button onClick={() => setUnlock(b)}>Unlock</button>}
-                {b.status === "ok" && <button onClick={() => setRestore(b)}>Restore</button>}
+                {b.status === "ok" && <button onClick={() => setRestore(b)} disabled={!b.chain_ok} title={b.chain_ok ? undefined : "Broken chain: a backup this one depends on is missing or corrupted"}>Restore</button>}
                 {b.status !== "deleted" && <button onClick={() => verify(b)}>Verify</button>}
                 {b.status !== "deleted" && <button className="subtle-danger" onClick={() => setDeleting(b)}>Delete</button>}
               </td>
             </tr>
           ))}
-          {!list.length && <tr role="row"><td role="cell" colSpan={8} className="muted">No backups.</td></tr>}
+          {!list.length && <tr role="row"><td role="cell" colSpan={9} className="muted">No backups.</td></tr>}
         </tbody>
       </table>
       {showNew && <NewBackup conns={conns} dests={dests} onClose={() => setShowNew(false)} />}
@@ -109,7 +124,13 @@ export default function Backups() {
       {unlock && <UnlockDialog backup={unlock} onClose={() => { setUnlock(null); load(); }} />}
       {deleting && (
         <Confirm title="Delete this backup permanently?" confirmLabel="Delete backup" typeToConfirm={deleting.database} onConfirm={(typed) => remove(deleting, typed)} onClose={() => setDeleting(null)}>
-          <p className="muted">{deleting.connection_name} / {deleting.database} — {when(deleting.started_at)}</p>
+          <p className="muted">{deleting.connection_name} / {dbLabel(deleting.database)} — {when(deleting.started_at)}</p>
+        </Confirm>
+      )}
+      {cascade && (
+        <Confirm title="Delete this backup and the incrementals built on it?" confirmLabel={`Delete ${cascade.dependents + 1} backups`}
+          onConfirm={() => remove(cascade.backup, cascade.typed, true)} onClose={() => setCascade(null)}>
+          <p>{cascade.dependents} incremental backup(s) depend on this one and cannot be restored without it: they are deleted too.</p>
         </Confirm>
       )}
     </>

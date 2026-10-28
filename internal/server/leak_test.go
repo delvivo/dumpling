@@ -41,6 +41,11 @@ func TestNoSecretLeaks(t *testing.T) {
 		`","schedule":"0 2 * * *","retention":{"last":3},"passphrase":"`+pass+`"}`)), &p)
 	call("GET", "/api/plans", "")
 	call("POST", "/api/plans/"+p.ID+"/run", "")
+	// incremental plan: chain paths (prerequisites, chain decision, differential) log nothing secret
+	var ip struct{ ID string }
+	json.Unmarshal([]byte(call("POST", "/api/plans", `{"name":"inc","connection_id":"`+created.ID+`","databases":["shop"],"destination_id":"`+d.ID+
+		`","schedule":"0 2 * * *","incr_schedule":"0 * * * *","ack_incremental_risk":true,"retention":{"last":3},"passphrase":"`+pass+`"}`)), &ip)
+	call("POST", "/api/plans/"+ip.ID+"/run?kind=incremental", "")
 	call("POST", "/api/backups", `{"connection_id":"`+created.ID+`","databases":["shop"],"destination_id":"`+d.ID+`","passphrase":"`+pass+`"}`)
 	s.R.Wait()
 	time.Sleep(50 * time.Millisecond)

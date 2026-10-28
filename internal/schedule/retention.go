@@ -59,3 +59,20 @@ func Keep(backups []store.Backup, p store.Retention) map[string]bool {
 	bucket(p.Monthly, func(t time.Time) string { return t.Format("2006-01") })
 	return keep
 }
+
+// Closure extends keep with every ancestor (via ParentID) of a kept backup, so no kept backup
+// loses a link it needs. Dependents of a dropped backup are never kept: a kept dependent would
+// have kept its ancestors.
+func Closure(keep map[string]bool, all []store.Backup) map[string]bool {
+	byID := make(map[string]store.Backup, len(all))
+	for _, b := range all {
+		byID[b.ID] = b
+	}
+	out := make(map[string]bool, len(keep))
+	for id := range keep {
+		for b, ok := byID[id]; ok && !out[b.ID]; b, ok = byID[b.ParentID] {
+			out[b.ID] = true
+		}
+	}
+	return out
+}

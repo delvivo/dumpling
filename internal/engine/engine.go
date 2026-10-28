@@ -46,6 +46,35 @@ type Engine interface {
 	Restore(ctx context.Context, c Conn, db string, overwrite bool, r io.Reader, opts RestoreOpts, log io.Writer) error
 }
 
+// Errors of incremental capture.
+var (
+	// ErrChainBroken: the previous link cannot be continued (base replaced, log purged, other
+	// server); the runner takes a full instead.
+	ErrChainBroken = errors.New("chain broken")
+	// ErrLockUnsafe: taking the global lock a full needs would stall writes; no backup this run.
+	ErrLockUnsafe = errors.New("lock unsafe")
+)
+
+// Link is one link of a backup chain as seen by an engine.
+type Link struct {
+	Marker string // engine resume state (JSON) recorded with the link
+	Path   string // local file holding the decoded payload (restore only)
+	State  string // local file of engine state from the link (postgres: backup_manifest); "" otherwise
+}
+
+// Incremental is implemented by engines that can produce backup chains. state receives engine
+// state the next link needs (postgres manifest); it is nil for engines that keep it in the marker.
+type Incremental interface {
+	Prereqs(ctx context.Context, c Conn, db string) (missing, warnings []string, err error)
+	BackupFull(ctx context.Context, c Conn, db string, w, state, log io.Writer) (marker string, warnings []string, err error)
+	BackupIncr(ctx context.Context, c Conn, db string, prev Link, w, state, log io.Writer) (marker string, warnings []string, err error)
+}
+
+// ChainRestorer restores links (oldest first, ending with the chosen backup) into db.
+type ChainRestorer interface {
+	RestoreChain(ctx context.Context, c Conn, db string, overwrite bool, links []Link, opts RestoreOpts, log io.Writer) error
+}
+
 func For(engine string) (Engine, error) {
 	switch engine {
 	case "postgres":
@@ -58,10 +87,18 @@ func For(engine string) (Engine, error) {
 	return nil, fmt.Errorf("unknown engine %q", engine)
 }
 
-// Gzip reports whether the app must compress this engine's dump (pg_dump -Fc compresses itself).
-func Gzip(engine string) bool { return engine != "postgres" }
+// Gzip reports whether the app must compress an artifact (pg_dump -Fc compresses itself;
+// physical postgres backups are plain tar).
+func Gzip(engine string, physical bool) bool { return engine != "postgres" || physical }
 
-func Ext(engine string) string {
+// Ext is the artifact extension; kind is "full" or "incr", physical marks postgres base backups.
+func Ext(engine, kind string, physical bool) string {
+	switch {
+	case physical:
+		return "tar.gz"
+	case engine == "mysql" && kind == "incr":
+		return "binlog.tar.gz"
+	}
 	return map[string]string{"postgres": "pgdump", "mysql": "sql.gz", "mssql": "bak.gz"}[engine]
 }
 
@@ -78,10 +115,15 @@ type Tool struct {
 
 var versionRe = regexp.MustCompile(`\d+\.\d+(\.\d+)?`)
 
+// IncrTools lists the extra client binaries an engine needs for incremental mode.
+func IncrTools(engine string) []string {
+	return map[string][]string{"postgres": {"pg_basebackup", "pg_combinebackup"}, "mysql": {"mysqlbinlog"}}[engine]
+}
+
 // Tools detects client binaries; missing ones map to nil.
 func Tools() map[string]*Tool {
 	out := map[string]*Tool{}
-	for _, name := range []string{"psql", "pg_dump", "pg_restore", "mysql", "mysqldump"} {
+	for _, name := range []string{"psql", "pg_dump", "pg_restore", "mysql", "mysqldump", "pg_basebackup", "pg_combinebackup", "mysqlbinlog"} {
 		out[name] = detect(name)
 	}
 	return out
@@ -104,9 +146,16 @@ func detect(name string) *Tool {
 }
 
 // MissingTools returns required tools not found (or unsupported) for engine.
-func MissingTools(engine string) []string {
+func MissingTools(engine string) []string { return missing(RequiredTools(engine)) }
+
+// MissingIncrTools is MissingTools for incremental mode (base plus incremental tools).
+func MissingIncrTools(engine string) []string {
+	return missing(append(RequiredTools(engine), IncrTools(engine)...))
+}
+
+func missing(names []string) []string {
 	var missing []string
-	for _, name := range RequiredTools(engine) {
+	for _, name := range names {
 		t := detect(name)
 		if t == nil {
 			missing = append(missing, name)

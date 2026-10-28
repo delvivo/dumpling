@@ -39,6 +39,13 @@ type sidecar struct {
 	OperationID   string `json:"operation_id"`
 	SizeBytes     *int64 `json:"size_bytes"`
 	SHA256        string `json:"sha256"`
+	// chains (003): links reference each other by backup id
+	BackupID string `json:"backup_id"`
+	Kind     string `json:"kind"`
+	ChainID  string `json:"chain_id"`
+	ParentID string `json:"parent_id"`
+	Seq      int    `json:"seq"`
+	Marker   string `json:"marker"`
 }
 
 func (m sidecar) valid() bool {
@@ -48,7 +55,7 @@ func (m sidecar) valid() bool {
 		return false
 	}
 	return m.Database != "" && m.SHA256 != "" && m.SizeBytes != nil && m.Encrypted != nil && m.Gzip != nil &&
-		m.StartedAt != "" && *m.Gzip == engine.Gzip(m.Engine)
+		m.StartedAt != "" && *m.Gzip == engine.Gzip(m.Engine, m.Engine == "postgres" && m.ChainID != "")
 }
 
 // Rescan imports backups present on a destination but unknown to this install (FR-016). It never
@@ -104,7 +111,15 @@ func (r *Runner) Rescan(dest store.Destination) (RescanResult, error) {
 		}
 		bk := store.Backup{ConnectionName: m.Connection, Engine: m.Engine, ServerVersion: m.ServerVersion, Database: m.Database,
 			DestinationID: dest.ID, Path: rel, SizeBytes: size, SHA256: m.SHA256, Encrypted: *m.Encrypted, Status: "ok",
-			StartedAt: m.StartedAt, FinishedAt: m.FinishedAt, PlanName: m.Plan, Imported: true, OriginPlanID: m.PlanID}
+			StartedAt: m.StartedAt, FinishedAt: m.FinishedAt, PlanName: m.Plan, Imported: true, OriginPlanID: m.PlanID,
+			Kind: m.Kind, ChainID: m.ChainID, ParentID: m.ParentID, Seq: m.Seq, Marker: m.Marker}
+		// keep the original id so chain links still find each other (FR-016); a link whose parent is
+		// not on this destination shows as a broken chain
+		if m.BackupID != "" {
+			if _, err := r.St.Backup(m.BackupID); errors.Is(err, store.ErrNotFound) {
+				bk.ID = m.BackupID
+			}
+		}
 		if bk.FinishedAt == "" {
 			bk.FinishedAt = bk.StartedAt
 		}

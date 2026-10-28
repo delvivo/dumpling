@@ -156,8 +156,8 @@ Client tools needed on the host (the UI warns when they are missing):
 
 | Engine | Tools |
 |--------|-------|
-| PostgreSQL | `psql`, `pg_dump`, `pg_restore` — major version **≥ the server's** |
-| MySQL | `mysql`, `mysqldump` from **Oracle MySQL** (the MariaDB client lacks `--set-gtid-purged`) |
+| PostgreSQL | `psql`, `pg_dump`, `pg_restore` — major version **≥ the server's**; incremental plans also `pg_basebackup`, `pg_combinebackup` |
+| MySQL | `mysql`, `mysqldump` from **Oracle MySQL** (the MariaDB client lacks `--set-gtid-purged`); incremental plans also `mysqlbinlog` |
 | SQL Server | none (native `BACKUP`/`RESTORE` through the Go driver) |
 
 ## Configuration
@@ -169,6 +169,7 @@ Every flag can also be set by environment variable; an explicit flag wins over t
 | `--data-dir` | `DUMPLING_DATA_DIR` | `./data` (image: `/data`) | SQLite state, operation logs, master key |
 | `--bind` | `DUMPLING_BIND` | `127.0.0.1:9898` (image: `0.0.0.0:9898`) | listen address; non-loopback without TLS logs a warning |
 | `--tls-cert`, `--tls-key` | `DUMPLING_TLS_CERT`, `DUMPLING_TLS_KEY` | – | enable HTTPS with your certificate |
+| `--restore-dir` | `DUMPLING_RESTORE_DIR` | `<data-dir>/restores` | PostgreSQL physical (incremental) restores are written only inside this directory |
 | `--log-level` | `DUMPLING_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`; `debug` adds one line per HTTP request and the scheduler's next wake |
 | – | `DUMPLING_MASTER_KEY` | generated `<data-dir>/master.key` | base64 of 32 bytes, encrypts stored secrets |
 | – | `TZ` | system time zone | time zone of plan schedules without a `CRON_TZ=` prefix |
@@ -207,6 +208,62 @@ Caveats:
 - A restore first re-checks the artifact's SHA-256; on mismatch the backup is marked *corrupted*
   and the target is not touched.
 
+## Incremental backups
+
+A plan can take **incremental backups** between its full backups: enable *Incremental backups*,
+pick an incremental schedule (the plan's schedule then drives the fulls) and a maximum number of
+incrementals per chain (default 30; a full is forced after that many). Each full starts a
+**chain**; every incremental belongs to one and needs the links before it to be restored.
+
+| Engine | Full | Incremental | Restore of an incremental |
+|--------|------|-------------|---------------------------|
+| SQL Server | `BACKUP DATABASE … WITH CHECKSUM` (no `COPY_ONLY`) | `BACKUP … WITH DIFFERENTIAL` (cumulative: needs only the full) | full `WITH NORECOVERY`, then the differential `WITH RECOVERY` |
+| MySQL | `mysqldump --source-data=2 --flush-logs` (records the binary log position) | raw binary logs since the previous link (`mysqlbinlog --raw`, after `FLUSH BINARY LOGS`) | the full dump, then each link replayed with `mysqlbinlog --skip-gtids --rewrite-db=<source>-><target> --database=<target>` |
+| PostgreSQL 17+ | `pg_basebackup -Ft -X fetch` of the **entire server** | `pg_basebackup --incremental=<previous manifest>` | `pg_combinebackup` into a new folder of the restore folder; you start PostgreSQL on it |
+
+- **Fallback to a full**: an incremental run takes a full instead when there is no chain yet, the
+  chain is broken (a link missing or corrupted), the chain reached its maximum length, the plan's
+  connection, destination, databases or passphrase changed, the base was replaced outside Dumpling
+  (SQL Server full by another tool, MySQL binary logs purged), or the connection now reaches a
+  different server. The reason is in the operation log.
+- **Prerequisites** are checked when incremental mode is enabled (refused if missing) and at every
+  run; if one stops being met, runs take a full and finish with a *prerequisite missing* warning.
+  - SQL Server: none beyond the shared directory. Enabling requires acknowledging that Dumpling's
+    fulls become the **differential base for every backup tool** on those databases.
+  - MySQL: binary logging on (`log_bin`), privileges `REPLICATION SLAVE`, `REPLICATION CLIENT`,
+    `RELOAD` (plus `PROCESS` recommended), `mysqlbinlog` on PATH. `binlog_format` other than `ROW`
+    is a warning: statements touching other databases may be replayed incorrectly. Enabling
+    requires acknowledging that **every full briefly holds a global read lock** to record the
+    position. Dumpling skips the full (warning, retried next run) while a write has been running
+    for more than 10 s, and stops it if the lock is not acquired within 5 s, so writes are never
+    blocked longer than that.
+  - PostgreSQL: server 17+, `summarize_wal = on`, a role with `REPLICATION`, a `pg_hba.conf` entry
+    allowing `replication` connections, `pg_basebackup` and `pg_combinebackup` ≥ the server major
+    version, a single tablespace. The plan covers **all databases** ("Entire server").
+- **Restore** shows the links to be applied, re-checks every link's SHA-256 before touching the
+  target, and is blocked (naming the link) when one is missing or corrupted. *Verify* on an
+  incremental checks every link. A PostgreSQL chain restores into a new or empty folder inside the
+  **restore folder** (`--restore-dir`, default `<data-dir>/restores`; paths escaping it are
+  refused): give it to the PostgreSQL server user, mode 0700, and start a server of the same major
+  version on it. Restoring needs local disk for the whole chain.
+- **Retention** counts every backup as before, then also keeps every link a kept backup needs;
+  deleting a backup that others depend on asks to delete them too.
+- Rescan imports chains with their links; a link whose earlier links are not on the destination
+  shows as *broken chain*.
+
+### Version and platform limits
+
+Incremental chains are tested against **SQL Server 2022**, **MySQL 8.4 (Oracle)** and
+**PostgreSQL 17** (plus PostgreSQL 16 for the refusal path); other versions are expected to work
+where noted but are not covered by the test suite.
+
+| Engine | Limit |
+|--------|-------|
+| All | Restoring needs a target server of the **same or newer** version than the source (SQL Server and PostgreSQL physical backups cannot be downgraded at all). Managed services that withhold the needed privileges or file access (Amazon RDS/Aurora, Azure SQL Database/Managed Instance, Cloud SQL…) are generally **not supported** for incremental mode; full logical backups keep working where they did before. |
+| SQL Server | The **`master`** database cannot take differentials (SQL Server only allows full backups of it): keep it in a non-incremental plan. A full or differential taken outside Dumpling without `COPY_ONLY` replaces the base and makes the next run a full. Azure SQL Managed Instance only allows `COPY_ONLY` backups, so it cannot run incremental plans. |
+| MySQL | **MariaDB is not supported** (client tools and binary log format differ). **8.0** servers should work (`REPLICATION REPLICA` is accepted as an alias since 8.0.22, `SHOW BINARY LOGS`/`FLUSH BINARY LOGS` exist), but only 8.4 is tested. Binary logs must survive between two links: if `binlog_expire_logs_seconds` (default 30 days) is shorter than the gap between incrementals, the logs are purged and the next run is a full. Servers with **`gtid_mode=ON`** are not covered by the tests (replay uses `--skip-gtids`, so restored transactions get new GTIDs on the target). Statement-based or `MIXED` logging: cross-database statements may be replayed wrongly (warning on enable). Services that forbid `FLUSH TABLES WITH READ LOCK` or remote binary log reads (e.g. RDS) cannot run incremental plans. |
+| PostgreSQL | Incremental mode needs **17 or later** (`pg_basebackup --incremental`, `summarize_wal`); 16 and earlier keep full logical backups only. Client tools must be **≥ the server's major version**: the Docker image ships PostgreSQL 17 clients, so 18+ servers need newer client tools. The rebuilt data directory starts only on the **same major version**. WAL summaries are kept for `wal_summary_keep_time` (default 10 days): a longer gap between incrementals makes the next incremental fail instead of falling back to a full — keep incremental schedules well inside that window or raise it. Only clusters **without extra tablespaces** are supported (the backup is streamed as one tar). Changing data checksums (`pg_checksums --enable/--disable`) in the middle of a chain is not supported by `pg_combinebackup`: take a new full afterwards. |
+
 ### SQL Server shared directory
 
 SQL Server writes the `.bak` itself, so each SQL Server connection defines one directory seen by
@@ -221,15 +278,16 @@ having SQL Server write a small probe file that Dumpling must be able to read. T
 go test ./...                         # unit tests
 cd web && npm test                    # UI logic tests (Vitest)
 
-# integration: real backup → restore round-trip on all three engines × local/S3/SFTP destinations
+# integration: real backup → restore round-trip on all three engines × local/S3/SFTP destinations,
+# plus incremental chains per engine (full + 3 incrementals → restore)
 docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b s3 sftp
 docker compose -f testdata/compose.yaml run --rm it
 docker compose -f testdata/compose.yaml down
 ```
 
 `cd web && npm run dev` serves the UI with a proxy to a running backend on `127.0.0.1:9898`.
-Specification, plan and tasks live in `specs/001-db-backup-webui/` and
-`specs/002-s3-sftp-destinations/`. Storage tests (`internal/storage`) run against local and an
+Specification, plan and tasks live in `specs/001-db-backup-webui/`,
+`specs/002-s3-sftp-destinations/` and `specs/003-incremental-backups/`. Storage tests (`internal/storage`) run against local and an
 in-process SFTP server; set `DUMPLING_TEST_S3_ENDPOINT`, `DUMPLING_TEST_S3_BUCKET`,
 `DUMPLING_TEST_S3_KEY`, `DUMPLING_TEST_S3_SECRET` (and `DUMPLING_TEST_SFTP_*`) to include real
 services, e.g. the compose ones on `127.0.0.1:19000` / `127.0.0.1:12222`.

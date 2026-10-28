@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -367,6 +368,7 @@ func (s *Server) deleteDestination(w http.ResponseWriter, r *http.Request) {
 type planView struct {
 	store.Plan
 	NextRun       string           `json:"next_run"`
+	NextIncrRun   string           `json:"next_incr_run"`
 	LastOperation *store.Operation `json:"last_operation"`
 }
 
@@ -374,6 +376,9 @@ func view(s *Server, p store.Plan) planView {
 	v := planView{Plan: p}
 	if n := schedule.Next(p, time.Now()); !n.IsZero() {
 		v.NextRun = n.UTC().Format(time.RFC3339)
+	}
+	if n := schedule.NextIncr(p, time.Now()); !n.IsZero() {
+		v.NextIncrRun = n.UTC().Format(time.RFC3339)
 	}
 	if o := s.St.LastOperation(p.ID); o.ID != "" {
 		v.LastOperation = &o
@@ -395,10 +400,14 @@ func (s *Server) listPlans(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) savePlan(w http.ResponseWriter, r *http.Request) {
-	var p store.Plan
-	if !readJSON(w, r, &p) {
+	var in struct {
+		store.Plan
+		Ack bool `json:"ack_incremental_risk"`
+	}
+	if !readJSON(w, r, &in) {
 		return
 	}
+	p := in.Plan
 	p.ID = r.PathValue("id")
 	switch {
 	case len(p.Name) < 1 || len(p.Name) > 64:
@@ -416,12 +425,25 @@ func (s *Server) savePlan(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "invalid_retention", err.Error())
 		return
 	}
-	if _, err := s.St.Connection(p.ConnectionID); err != nil {
+	c, err := s.St.Connection(p.ConnectionID)
+	if err != nil {
 		writeErr(w, 400, "invalid", "unknown connection")
 		return
 	}
 	if _, err := s.St.Destination(p.DestinationID); err != nil {
 		writeErr(w, 400, "invalid", "unknown destination")
+		return
+	}
+	var old *store.Plan
+	if p.ID != "" {
+		o, err := s.St.Plan(p.ID)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		old = &o
+	}
+	if !s.incrementalPlan(w, r, &p, old, c, in.Ack) {
 		return
 	}
 	status := 200
@@ -441,6 +463,81 @@ func (s *Server) savePlan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, view(s, saved))
 }
 
+// incrementalPlan validates and completes the incremental-mode fields of p (FR-001, FR-006,
+// FR-007, FR-008, FR-009); it writes the error response and returns false when p is rejected.
+func (s *Server) incrementalPlan(w http.ResponseWriter, r *http.Request, p *store.Plan, old *store.Plan, c store.Connection, ack bool) bool {
+	cluster := slices.Contains(p.Databases, store.ClusterDB)
+	switch {
+	case p.MaxChain == 0:
+		p.MaxChain = 30
+	case p.MaxChain < 1 || p.MaxChain > 1000:
+		writeErr(w, 400, "invalid", "max_chain must be 1–1000")
+		return false
+	}
+	if p.IncrSchedule != "" {
+		if _, err := schedule.Parse(p.IncrSchedule); err != nil {
+			writeErr(w, 400, "invalid_schedule", "invalid incremental cron schedule: "+err.Error())
+			return false
+		}
+	}
+	switch {
+	case p.Incremental() && c.Engine == "postgres" && (len(p.Databases) != 1 || !cluster):
+		writeErr(w, 400, "invalid", "PostgreSQL incremental plans back up the entire server: databases must be [\"*\"]")
+		return false
+	case cluster && !(p.Incremental() && c.Engine == "postgres"):
+		writeErr(w, 400, "invalid", "select at least one database")
+		return false
+	}
+
+	wasIncr := old != nil && old.Incremental()
+	p.IncrAckAt = ""
+	if wasIncr && p.Incremental() {
+		p.IncrAckAt = old.IncrAckAt
+	}
+	if p.Incremental() && !wasIncr {
+		if (c.Engine == "mssql" || c.Engine == "mysql") && !ack {
+			msg := map[string]string{
+				"mssql": "incremental mode takes non-COPY_ONLY full backups, which become the differential base for every backup tool on these databases: acknowledge to continue",
+				"mysql": "incremental mode briefly holds a global read lock at the start of every full backup: acknowledge to continue",
+			}[c.Engine]
+			writeErr(w, 400, "ack_required", msg)
+			return false
+		}
+		if c.Engine == "mssql" || c.Engine == "mysql" {
+			p.IncrAckAt = store.Now()
+		}
+		eng, err := engine.For(c.Engine)
+		if err != nil {
+			fail(w, err)
+			return false
+		}
+		inc, ok := eng.(engine.Incremental)
+		if !ok {
+			writeErr(w, 400, "invalid", "incremental backups are not supported for "+c.Engine)
+			return false
+		}
+		missing, _, err := inc.Prereqs(r.Context(), s.R.EngineConn(c), p.Databases[0])
+		if err != nil {
+			missing = append(missing, "prerequisite check failed: "+err.Error())
+		}
+		if len(missing) > 0 {
+			writeJSON(w, 400, map[string]any{"error": "incremental prerequisites not met: " + strings.Join(missing, "; "),
+				"code": "prerequisite_missing", "missing": missing})
+			return false
+		}
+	}
+
+	p.ChainResetAt = ""
+	if old != nil {
+		p.ChainResetAt = old.ChainResetAt
+		if old.ConnectionID != p.ConnectionID || old.DestinationID != p.DestinationID ||
+			!slices.Equal(old.Databases, p.Databases) || p.Passphrase != nil && *p.Passphrase != old.PassphrasePlain() {
+			p.ChainResetAt = store.Now()
+		}
+	}
+	return true
+}
+
 func (s *Server) deletePlan(w http.ResponseWriter, r *http.Request) {
 	if err := s.St.DeletePlan(r.PathValue("id")); err != nil {
 		fail(w, err)
@@ -456,7 +553,15 @@ func (s *Server) runPlan(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	ids, err := s.R.RunPlan(p)
+	kind := r.URL.Query().Get("kind")
+	if kind == "" {
+		kind = "full"
+	}
+	if kind != "full" && kind != "incremental" {
+		writeErr(w, 400, "invalid", "kind must be full or incremental")
+		return
+	}
+	ids, err := s.R.RunPlan(p, kind)
 	if err != nil {
 		fail(w, err)
 		return
@@ -521,6 +626,12 @@ func (s *Server) withLocation(bs []store.Backup) {
 		if d.ID != "" {
 			bs[i].DestinationType, bs[i].Location = d.Type, storage.Location(d, bs[i].Path)
 		}
+		// ponytail: one parent walk per row; cache by parent id if history views get slow
+		bs[i].ChainOK = true
+		if bs[i].ParentID != "" {
+			_, err := s.St.Ancestors(bs[i])
+			bs[i].ChainOK = err == nil
+		}
 	}
 }
 
@@ -575,11 +686,12 @@ func (s *Server) verifyBackup(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteBackup(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Confirm string `json:"confirm"`
+		Cascade bool   `json:"cascade"`
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
-	if err := s.R.DeleteBackup(r.PathValue("id"), in.Confirm); err != nil {
+	if err := s.R.DeleteBackup(r.PathValue("id"), in.Confirm, in.Cascade); err != nil {
 		fail(w, err)
 		return
 	}

@@ -147,3 +147,45 @@ func TestUnlockAndRetention(t *testing.T) {
 		}
 	}
 }
+
+func TestRescanChains(t *testing.T) {
+	e := setup(t)
+	e.useIncr(t)
+	p := e.incrPlan(t)
+	_, full := e.run(t, p, "full")
+	_, d1 := e.run(t, p, "incremental")
+	_, d2 := e.run(t, p, "incremental")
+	if d2[0].ParentID != full[0].ID { // mssql: diffs apply on the full
+		t.Fatalf("setup chain: %+v", d2[0])
+	}
+
+	// lose one diff's metadata: the other links still import and restore
+	os.Remove(filepath.Join(e.dest.Path, d1[0].Path+".json"))
+	f := fresh(t, e)
+	res, err := f.r.Rescan(f.dest)
+	if err != nil || res.Imported != 2 {
+		t.Fatalf("rescan %+v %v", res, err)
+	}
+	got, err := f.st.Backup(d2[0].ID)
+	if err != nil || got.ParentID != full[0].ID || got.Kind != "incr" || got.ChainID != full[0].ID || got.Marker == "" {
+		t.Fatalf("imported link: %+v %v", got, err)
+	}
+	if _, err := f.st.Ancestors(got); err != nil {
+		t.Fatalf("imported chain broken: %v", err)
+	}
+
+	// a chain whose full is not on the destination imports, but shows as broken
+	g := setup(t)
+	gd := g.dest
+	gd.Path = e.dest.Path
+	g.st.SaveDestination(&gd)
+	os.Remove(filepath.Join(e.dest.Path, full[0].Path+".json"))
+	if _, err := g.r.Rescan(gd); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := g.st.Backup(d2[0].ID); err != nil {
+		t.Fatal(err)
+	} else if _, err := g.st.Ancestors(b); err == nil {
+		t.Fatal("chain without its full not reported broken")
+	}
+}

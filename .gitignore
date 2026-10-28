@@ -28,3 +28,4 @@ Thumbs.db
 .idea/
 
 .claude/settings.local.json
+/testdata/pg-restore/

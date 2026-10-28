@@ -74,16 +74,10 @@ func (w *Writer) Write(p []byte) (int, error) { return w.w.Write(p) }
 // <rel>.json with meta plus size and sha256 to b. Returns size and hex checksum of stored bytes.
 // A sidecar error is returned together with a valid size: the artifact itself is committed.
 func (w *Writer) Commit(b storage.Backend, rel string, meta map[string]any) (int64, string, error) {
-	for _, l := range w.layers {
-		if err := l.Close(); err != nil {
-			w.up.Abort()
-			return 0, "", err
-		}
-	}
-	if err := w.up.Commit(); err != nil {
+	size, sum, err := w.CommitBare()
+	if err != nil {
 		return 0, "", err
 	}
-	size, sum := w.n, w.sum()
 	if meta == nil {
 		meta = map[string]any{}
 	}
@@ -96,6 +90,21 @@ func (w *Writer) Commit(b storage.Backend, rel string, meta map[string]any) (int
 		return size, sum, fmt.Errorf("sidecar: %w", err)
 	}
 	return size, sum, nil
+}
+
+// CommitBare closes all layers and commits the upload without a sidecar (auxiliary files such as
+// PostgreSQL manifests, which must not look like backups to a rescan).
+func (w *Writer) CommitBare() (int64, string, error) {
+	for _, l := range w.layers {
+		if err := l.Close(); err != nil {
+			w.up.Abort()
+			return 0, "", err
+		}
+	}
+	if err := w.up.Commit(); err != nil {
+		return 0, "", err
+	}
+	return w.n, w.sum(), nil
 }
 
 // Abort discards the upload. Safe after Commit (no-op).

@@ -30,6 +30,7 @@ func main() {
 	bind := flag.String("bind", envOr("DUMPLING_BIND", "127.0.0.1:9898"), "listen address [DUMPLING_BIND]")
 	cert := flag.String("tls-cert", os.Getenv("DUMPLING_TLS_CERT"), "TLS certificate file, enables HTTPS with --tls-key [DUMPLING_TLS_CERT]")
 	key := flag.String("tls-key", os.Getenv("DUMPLING_TLS_KEY"), "TLS private key file [DUMPLING_TLS_KEY]")
+	restoreDir := flag.String("restore-dir", os.Getenv("DUMPLING_RESTORE_DIR"), "PostgreSQL physical restores are written only inside this directory (default <data-dir>/restores) [DUMPLING_RESTORE_DIR]")
 	logLevel := flag.String("log-level", envOr("DUMPLING_LOG_LEVEL", "info"), "log level: debug, info, warn, error [DUMPLING_LOG_LEVEL]")
 	flag.Parse()
 	var lvl slog.Level
@@ -38,19 +39,23 @@ func main() {
 		os.Exit(1)
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})))
-	if err := run(*dataDir, *bind, *cert, *key); err != nil {
+	if err := run(*dataDir, *restoreDir, *bind, *cert, *key); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(dataDir, bind, cert, key string) error {
+func run(dataDir, restoreDir, bind, cert, key string) error {
 	if (cert == "") != (key == "") {
 		return errors.New("--tls-cert and --tls-key must be given together")
 	}
 	tls := cert != ""
 	dataDir, _ = filepath.Abs(dataDir)
-	for _, d := range []string{dataDir, filepath.Join(dataDir, "logs"), filepath.Join(dataDir, "tmp")} {
+	if restoreDir == "" {
+		restoreDir = filepath.Join(dataDir, "restores")
+	}
+	restoreDir, _ = filepath.Abs(restoreDir)
+	for _, d := range []string{dataDir, filepath.Join(dataDir, "logs"), filepath.Join(dataDir, "tmp"), restoreDir} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			return err
 		}
@@ -74,11 +79,12 @@ func run(dataDir, bind, cert, key string) error {
 
 	hub := server.NewHub()
 	r := runner.New(ctx, st, dataDir, hub.Publish)
+	r.RestoreDir = restoreDir
 	if err := r.Recover(); err != nil {
 		return err
 	}
-	sched := schedule.New(st, func(p store.Plan) {
-		if _, err := r.RunPlan(p); err != nil {
+	sched := schedule.New(st, func(p store.Plan, kind string) {
+		if _, err := r.RunPlan(p, kind); err != nil {
 			slog.Error("scheduled run", "plan", p.Name, "err", err)
 		}
 	})

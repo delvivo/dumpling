@@ -29,6 +29,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
  && echo "deb [signed-by=/usr/share/keyrings/mysql.gpg] http://repo.mysql.com/apt/ubuntu resolute mysql-8.4-lts" > /etc/apt/sources.list.d/mysql.list \
  && printf 'Package: mysql-*\nPin: origin repo.mysql.com\nPin-Priority: 1001\n' > /etc/apt/preferences.d/mysql \
  && apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 mysql-client \
+ # incremental backups: pg_combinebackup is not wrapped into /usr/bin; mysqlbinlog ships only in
+ # mysql-community-server-core, so extract the one binary instead of installing mysqld
+ && ln -s /usr/lib/postgresql/17/bin/pg_combinebackup /usr/local/bin/pg_combinebackup \
+ && cd /tmp && apt-get download mysql-community-server-core \
+ && dpkg-deb --fsys-tarfile mysql-community-server-core_*.deb | tar -x -C / ./usr/bin/mysqlbinlog \
+ && rm -f /tmp/*.deb && cd / \
  && apt-get purge -y curl gnupg && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Integration tests: `docker compose -f testdata/compose.yaml run --rm it`
