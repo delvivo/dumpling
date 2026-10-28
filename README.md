@@ -32,7 +32,7 @@ docker compose -f testdata/compose.yaml up -d --build --wait dumpling   # http:/
 docker compose -f testdata/compose.yaml down -v                         # tear down + delete volumes
 ```
 
-This starts Dumpling plus two instances each of PostgreSQL 17, MySQL 8.4 and SQL Server 2022,
+This starts Dumpling plus two instances each of PostgreSQL (17 and 16), MySQL 8.4 and SQL Server 2022,
 an S3-compatible server (RustFS) and an SFTP server. The comments in `testdata/compose.yaml` list
 the host names, ports and test credentials to enter in the UI; use `/backups` as local
 destination path.
@@ -136,7 +136,7 @@ On first launch the UI asks you to create the admin account.
 
 | Engine | Backup | Restore over an existing database |
 |--------|--------|-----------------------------------|
-| PostgreSQL | `pg_dump -Fc` (single repeatable-read snapshot) | `DROP DATABASE … WITH (FORCE)`, `CREATE DATABASE`, `pg_restore --exit-on-error` |
+| PostgreSQL | `pg_dump -Fc` (single repeatable-read snapshot) | `DROP DATABASE … WITH (FORCE)`, `CREATE DATABASE`, `pg_restore -f - \| psql --single-transaction` |
 | MySQL | `mysqldump --single-transaction --routines --triggers --events --hex-blob --set-gtid-purged=OFF` | `DROP DATABASE`, `CREATE DATABASE`, `mysql < dump` |
 | SQL Server | `BACKUP DATABASE … WITH COPY_ONLY, CHECKSUM` into a shared directory | `SET OFFLINE WITH ROLLBACK IMMEDIATE`, `RESTORE … WITH REPLACE, CHECKSUM, MOVE …` |
 
@@ -145,6 +145,9 @@ Caveats:
   completes with a *warning* listing those tables.
 - **"Skip ownership"** on restore: PostgreSQL adds `--no-owner --no-acl`; MySQL strips `DEFINER`
   clauses. Use it when the target lacks the original roles/users.
+- **PostgreSQL** restores run in a single transaction: if one fails, the database it created is
+  dropped. Dumps from pg_dump 17+ restore onto older servers (the `SET transaction_timeout` line
+  they reject is dropped).
 - A restore first re-checks the artifact's SHA-256; on mismatch the backup is marked *corrupted*
   and the target is not touched.
 

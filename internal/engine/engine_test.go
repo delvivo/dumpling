@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -27,7 +28,7 @@ func TestPostgresArgs(t *testing.T) {
 	if args[0] != "-Fc" || args[1] != `--dbname=dbname='we=ird\'db'` {
 		t.Fatalf("%q", args)
 	}
-	if a := pgRestoreArgs("x", RestoreOpts{SkipOwnership: true}); !strings.Contains(strings.Join(a, " "), "--no-owner --no-acl") {
+	if a := strings.Join(pgRestoreArgs(RestoreOpts{SkipOwnership: true}), " "); a != "-f - --no-owner --no-acl" {
 		t.Fatalf("%q", a)
 	}
 	env := strings.Join(pgEnv(c), "\n")
@@ -65,6 +66,27 @@ func TestStripDefiner(t *testing.T) {
 	out := string(b)
 	if strings.Contains(out, "DEFINER=`") || !strings.Contains(out, "CREATE PROCEDURE p()") || !strings.HasSuffix(out, "VALUES (1)") {
 		t.Fatalf("%s", out)
+	}
+}
+
+func TestPgDropTimeout(t *testing.T) {
+	in := "SET statement_timeout = 0;\nSET transaction_timeout = 0;\nSET lock_timeout = 0;\nSET transaction_timeout = 0;\n"
+	b, _ := io.ReadAll(pgDropTimeout(strings.NewReader(in)))
+	if want := "SET statement_timeout = 0;\nSET lock_timeout = 0;\nSET transaction_timeout = 0;\n"; string(b) != want {
+		t.Fatalf("%q", b)
+	}
+}
+
+func TestPgHint(t *testing.T) {
+	err := errors.New(`psql:<stdin>:20: ERROR:  role "admin" does not exist`)
+	if h := pgHint(err, RestoreOpts{}); !errors.Is(h, err) || !strings.Contains(h.Error(), "Skip ownership") {
+		t.Fatal(h)
+	}
+	if h := pgHint(err, RestoreOpts{SkipOwnership: true}); h != err {
+		t.Fatal(h)
+	}
+	if other := errors.New("relation x does not exist"); pgHint(other, RestoreOpts{}) != other {
+		t.Fatal("hint on unrelated error")
 	}
 }
 

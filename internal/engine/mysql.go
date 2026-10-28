@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -123,28 +122,10 @@ var definerRe = regexp.MustCompile("DEFINER=`[^`]*`@`[^`]*` ?")
 
 // stripDefiner removes DEFINER clauses (also inside /*!50013 ... */) line by line, streaming.
 func stripDefiner(r io.Reader) io.Reader {
-	pr, pw := io.Pipe()
-	go func() {
-		br := bufio.NewReaderSize(r, 1<<20)
-		bw := bufio.NewWriterSize(pw, 1<<20)
-		for {
-			line, err := br.ReadString('\n')
-			if strings.Contains(line, "DEFINER=") {
-				line = definerRe.ReplaceAllString(line, "")
-			}
-			if _, werr := bw.WriteString(line); werr != nil {
-				pw.CloseWithError(werr)
-				return
-			}
-			if err == io.EOF {
-				pw.CloseWithError(bw.Flush())
-				return
-			}
-			if err != nil {
-				pw.CloseWithError(err)
-				return
-			}
+	return mapLines(r, func(line string) string {
+		if strings.Contains(line, "DEFINER=") {
+			line = definerRe.ReplaceAllString(line, "")
 		}
-	}()
-	return pr
+		return line
+	})
 }

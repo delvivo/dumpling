@@ -2,6 +2,7 @@
 package engine
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -162,6 +163,31 @@ func output(ctx context.Context, name string, args, env []string, stdin io.Reade
 	var out bytes.Buffer
 	err := run(ctx, name, args, env, stdin, &out, nil)
 	return strings.TrimSpace(out.String()), err
+}
+
+// mapLines streams r through f line by line (each line keeps its trailing newline).
+func mapLines(r io.Reader, f func(string) string) io.Reader {
+	pr, pw := io.Pipe()
+	go func() {
+		br := bufio.NewReaderSize(r, 1<<20)
+		bw := bufio.NewWriterSize(pw, 1<<20)
+		for {
+			line, err := br.ReadString('\n')
+			if _, werr := bw.WriteString(f(line)); werr != nil {
+				pw.CloseWithError(werr)
+				return
+			}
+			if err == io.EOF {
+				pw.CloseWithError(bw.Flush())
+				return
+			}
+			if err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+		}
+	}()
+	return pr
 }
 
 func lines(s string) []string {

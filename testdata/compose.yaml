@@ -25,7 +25,7 @@ x-mssql: &mssql
 
 services:
   pg-a: { <<: *pg, ports: ["15432:5432"] }
-  pg-b: { <<: *pg, ports: ["15433:5432"] }
+  pg-b: { <<: *pg, image: "postgres:16", ports: ["15433:5432"] }   # older server: covers pg_dump 17 → PG 16 restore
   mysql-a: { <<: *mysql, ports: ["13306:3306"] }
   mysql-b: { <<: *mysql, ports: ["13307:3306"] }
   mssql-a: { <<: *mssql, ports: ["11433:1433"] }

@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL restore to a server older than 17 no longer fails with `unrecognized configuration
+  parameter "transaction_timeout"` (emitted by pg_dump 17+).
+- PostgreSQL restore is atomic (`pg_restore -f - | psql --single-transaction`): on failure the
+  database created by the restore is dropped instead of being left half-restored, and a missing
+  owner role (`role "…" does not exist`) points to "Skip ownership".
 - Dialogs (Backup now, Restore, Unlock) open as real modals: centered with backdrop instead of below
   the table, Esc closes, focus moves inside and returns to the opener.
 - Dark mode: error/success/warning colors and text on primary/danger buttons now meet WCAG AA
