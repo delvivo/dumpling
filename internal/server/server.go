@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/delvivo/dumpling/internal/runner"
 	"github.com/delvivo/dumpling/internal/store"
@@ -81,7 +82,26 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { writeErr(w, 404, "not_found", "no such endpoint") })
 	mux.Handle("/", spa())
-	return csrf(mux)
+	return logRequests(csrf(mux))
+}
+
+// statusWriter records the response status; Unwrap/Flush keep SSE streaming working.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int)        { w.status = code; w.ResponseWriter.WriteHeader(code) }
+func (w *statusWriter) Flush()                      { http.NewResponseController(w.ResponseWriter).Flush() }
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// logRequests logs each request at debug level (path only: no query, no body).
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start, sw := time.Now(), &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sw, r)
+		slog.Debug("http", "method", r.Method, "path", r.URL.Path, "status", sw.status, "dur", time.Since(start).Round(time.Millisecond))
+	})
 }
 
 // csrf requires a custom header on state-changing API requests (cross-site forms cannot set it).

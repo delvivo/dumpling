@@ -30,7 +30,14 @@ func main() {
 	bind := flag.String("bind", envOr("DUMPLING_BIND", "127.0.0.1:9898"), "listen address [DUMPLING_BIND]")
 	cert := flag.String("tls-cert", os.Getenv("DUMPLING_TLS_CERT"), "TLS certificate file, enables HTTPS with --tls-key [DUMPLING_TLS_CERT]")
 	key := flag.String("tls-key", os.Getenv("DUMPLING_TLS_KEY"), "TLS private key file [DUMPLING_TLS_KEY]")
+	logLevel := flag.String("log-level", envOr("DUMPLING_LOG_LEVEL", "info"), "log level: debug, info, warn, error [DUMPLING_LOG_LEVEL]")
 	flag.Parse()
+	var lvl slog.Level
+	if err := lvl.UnmarshalText([]byte(*logLevel)); err != nil {
+		slog.Error("fatal", "err", "invalid --log-level "+*logLevel+": use debug, info, warn or error")
+		os.Exit(1)
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})))
 	if err := run(*dataDir, *bind, *cert, *key); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)

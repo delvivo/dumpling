@@ -78,6 +78,7 @@ func (s *Scheduler) Loop(ctx context.Context) {
 		if !wake.IsZero() {
 			wait = time.Until(wake)
 		}
+		slog.Debug("scheduler: next wake", "in", wait.Round(time.Second))
 		t := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():

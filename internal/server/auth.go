@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -65,6 +66,7 @@ func (s *Server) postSetup(w http.ResponseWriter, r *http.Request) {
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	if !s.logins.allow(ip) {
+		slog.Warn("login rate limited", "remote", ip)
 		writeErr(w, 429, "rate_limited", "too many login attempts, retry in a minute")
 		return
 	}
@@ -77,6 +79,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		hash = string(dummyHash) // same bcrypt cost for unknown users (no username probing by timing)
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(c.Password)) != nil || err != nil {
+		slog.Warn("login failed", "user", c.Username, "remote", ip)
 		writeErr(w, 401, "unauthorized", "invalid username or password")
 		return
 	}

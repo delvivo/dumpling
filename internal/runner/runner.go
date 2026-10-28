@@ -84,6 +84,7 @@ func (r *Runner) start(o *store.Operation) (*OpLog, error) {
 		return nil, err
 	}
 	o.Status, o.StartedAt = "running", store.Now()
+	slog.Info("operation started", "id", o.ID, "type", o.Type, "database", o.Database)
 	r.St.UpdateOperation(o)
 	r.Publish("operation", *o)
 	return l, nil
@@ -100,6 +101,14 @@ func (r *Runner) finish(o *store.Operation, l *OpLog, status, msg string) {
 		l.Close()
 	}
 	o.Status, o.Message, o.FinishedAt = status, msg, store.Now()
+	lvl := slog.LevelInfo
+	switch status {
+	case "failed":
+		lvl = slog.LevelError
+	case "warning":
+		lvl = slog.LevelWarn
+	}
+	slog.Log(context.Background(), lvl, "operation finished", "id", o.ID, "type", o.Type, "database", o.Database, "status", status, "msg", msg)
 	if err := r.St.UpdateOperation(o); err != nil {
 		slog.Error("update operation", "id", o.ID, "err", err)
 	}

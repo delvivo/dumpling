@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Configurable log level (`--log-level` / `DUMPLING_LOG_LEVEL`: debug, info, warn, error; default info).
+  Operations log start and outcome (failures as errors), failed and rate-limited logins log as
+  warnings; at debug level every HTTP request (method, path, status, duration) and the scheduler's
+  next wake are logged.
+- Release workflow: pushing a `v*` tag publishes prebuilt binaries for Linux, macOS and Windows
+  (amd64 and arm64) with `SHA256SUMS` on GitHub Releases.
 - S3-compatible buckets and SFTP servers as backup destinations (feature `002-s3-sftp-destinations`):
   streaming uploads with atomic, never-overwriting commit; restore and verify download once to a
   temporary file and check the SHA-256 first; remote retention pruning; destination test with

@@ -26,9 +26,11 @@ docker compose -f testdata/compose.yaml down
 
 On Git Bash, `docker run -v` paths need `MSYS_NO_PATHCONV=1`.
 
+Release: `.github/workflows/release.yml` — on `v*` tag push builds UI, vet/test `-short`, cross-compiles (`CGO_ENABLED=0`, `-X main.version=<tag>`) linux/darwin/windows × amd64/arm64 into tar.gz/zip + `SHA256SUMS`, then `gh release create`. `workflow_dispatch` only uploads the `dist` artifact.
+
 ## Architecture
 
-- `cmd/dumpling` — flags (each defaults to a `DUMPLING_*` env var), wiring, startup recovery, scheduler loop, loopback/TLS warning.
+- `cmd/dumpling` — flags (each defaults to a `DUMPLING_*` env var), `slog` text handler on stderr with `--log-level`/`DUMPLING_LOG_LEVEL` (debug|info|warn|error, default info), wiring, startup recovery, scheduler loop, loopback/TLS warning.
 - `internal/store` — SQLite schema (`schema.sql`, embedded) plus additive migrations (`migrate.go`, `PRAGMA user_version`) and queries; secrets sealed via `internal/secret` (AES-256-GCM, master key from `DUMPLING_MASTER_KEY` or `<data-dir>/master.key`). Destinations (`destinations.go`): `type` + `config` JSON + sealed `secret` JSON; `Public()` strips secrets for responses; location fields locked while backups exist.
 - `internal/engine` — `Engine` interface with `postgres` (psql/pg_dump/pg_restore, password via `PGPASSWORD`), `mysql` (mysql/mysqldump, credentials via temp `--defaults-extra-file`), `mssql` (go-mssqldb, native BACKUP/RESTORE through a shared directory). Secrets never on argv.
 - `internal/storage` — `Backend` interface (`local`, `s3` via minio-go, `sftp` via pkg/sftp): no-overwrite `Create`/`Commit`, `Open`, `Stat`, `Remove`, `List`, `Cleanup`; "not found" wraps `fs.ErrNotExist`. `Test` probes write/read/delete; SFTP host key pinned (`ProbeHostKey`). Tests: local + in-process SFTP always, real S3/SFTP via `DUMPLING_TEST_S3_*`/`DUMPLING_TEST_SFTP_*`.

@@ -76,6 +76,16 @@ Imported **encrypted** backups are *locked*, because their passphrase lived in t
 and can apply it to all locked backups of the same original plan. Alternatively enter the
 passphrase in the restore dialog for a one-off restore.
 
+### Prebuilt binaries
+
+Each `v*` tag publishes a GitHub release with archives for Linux, macOS and Windows (amd64 and
+arm64) plus `SHA256SUMS`. Download, check the checksum and run `dumpling` (client tools below are
+still needed on the host). macOS binaries are not notarized: clear the quarantine flag with
+`xattr -d com.apple.quarantine dumpling` if Gatekeeper blocks them.
+
+Maintainers release with `git tag vX.Y.Z && git push origin vX.Y.Z`
+(workflow `.github/workflows/release.yml`; a manual run only uploads the archives as an artifact).
+
 ### From source
 
 Requires Go 1.26+ and Node 22+.
@@ -103,6 +113,7 @@ Every flag can also be set by environment variable; an explicit flag wins over t
 | `--data-dir` | `DUMPLING_DATA_DIR` | `./data` (image: `/data`) | SQLite state, operation logs, master key |
 | `--bind` | `DUMPLING_BIND` | `127.0.0.1:9898` (image: `0.0.0.0:9898`) | listen address; non-loopback without TLS logs a warning |
 | `--tls-cert`, `--tls-key` | `DUMPLING_TLS_CERT`, `DUMPLING_TLS_KEY` | – | enable HTTPS with your certificate |
+| `--log-level` | `DUMPLING_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`; `debug` adds one line per HTTP request and the scheduler's next wake |
 | – | `DUMPLING_MASTER_KEY` | generated `<data-dir>/master.key` | base64 of 32 bytes, encrypts stored secrets |
 | – | `TZ` | system time zone | time zone of plan schedules without a `CRON_TZ=` prefix |
 
