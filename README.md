@@ -48,6 +48,39 @@ docker run -d -p 127.0.0.1:9898:9898 -v dumpling-data:/data -v /srv/backups:/bac
 The image listens on all interfaces *inside* the container: publish the port on loopback as above,
 or serve it behind TLS (`--tls-cert/--tls-key`, or a TLS reverse proxy).
 
+### Docker Compose
+
+`docker-compose.yml`:
+
+```yaml
+services:
+  dumpling:
+    image: fdelvivo/dumpling:latest        # or pin a release, e.g. fdelvivo/dumpling:1.0.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9898:9898"             # loopback only; use TLS or a reverse proxy to expose it
+    environment:
+      TZ: Europe/Rome                     # time zone of plan schedules
+      # DUMPLING_MASTER_KEY: <base64 of 32 bytes>   # default: generated in /data/master.key
+      # DUMPLING_LOG_LEVEL: debug
+      # DUMPLING_TLS_CERT: /certs/tls.crt
+      # DUMPLING_TLS_KEY: /certs/tls.key
+    volumes:
+      - dumpling-data:/data               # SQLite state, operation logs, master key
+      - /srv/backups:/backups             # use /backups as local destination path
+      # - /srv/mssql-share:/share         # SQL Server shared directory, if used
+      # - ./certs:/certs:ro
+volumes:
+  dumpling-data:
+```
+
+```sh
+docker compose up -d                      # http://127.0.0.1:9898
+```
+
+The container runs as uid 10001: host directories mounted for backups (and the SQL Server share)
+must be writable by it, e.g. `sudo chown 10001 /srv/backups`. The image is `linux/amd64` only.
+
 ### Try it with Docker Compose (test databases included)
 
 ```sh
