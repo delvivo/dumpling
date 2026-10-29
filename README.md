@@ -13,6 +13,29 @@ choice** (same or another instance of the same engine, optionally under a differ
 - Live operation log and filterable history
 - One binary (Go) that embeds the web UI (React); GPL-3.0
 
+![Backup history: engine, plan, destination, size, checksum and status of every backup](docs/screenshots/backups.png)
+
+## Screenshots
+
+**Restore** into any same-engine connection, under any name. Overwriting an existing database
+requires typing its name; a target server older than the backup source is flagged.
+
+![Restore dialog with overwrite confirmation and version warning](docs/screenshots/restore.png)
+
+**Plans**: cron schedules, retention, optional encryption (🔒), pause/resume and run now.
+
+![Plans list](docs/screenshots/plans.png)
+
+**Operations**: filterable history of backups, restores, verifies and prunes, each with its full log.
+
+![Operations history](docs/screenshots/operations.png)
+![Operation detail with live log](docs/screenshots/operation-log.png)
+
+**Connections** and **destinations** (local directory, S3-compatible bucket, SFTP).
+
+![Connections list](docs/screenshots/connections.png)
+![Destinations list](docs/screenshots/destinations.png)
+
 ## Install
 
 ### Docker (client tools included)
@@ -24,6 +47,39 @@ docker run -d -p 127.0.0.1:9898:9898 -v dumpling-data:/data -v /srv/backups:/bac
 
 The image listens on all interfaces *inside* the container: publish the port on loopback as above,
 or serve it behind TLS (`--tls-cert/--tls-key`, or a TLS reverse proxy).
+
+### Docker Compose
+
+`docker-compose.yml`:
+
+```yaml
+services:
+  dumpling:
+    image: fdelvivo/dumpling:latest        # or pin a release, e.g. fdelvivo/dumpling:1.0.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9898:9898"             # loopback only; use TLS or a reverse proxy to expose it
+    environment:
+      TZ: Europe/Rome                     # time zone of plan schedules
+      # DUMPLING_MASTER_KEY: <base64 of 32 bytes>   # default: generated in /data/master.key
+      # DUMPLING_LOG_LEVEL: debug
+      # DUMPLING_TLS_CERT: /certs/tls.crt
+      # DUMPLING_TLS_KEY: /certs/tls.key
+    volumes:
+      - dumpling-data:/data               # SQLite state, operation logs, master key
+      - /srv/backups:/backups             # use /backups as local destination path
+      # - /srv/mssql-share:/share         # SQL Server shared directory, if used
+      # - ./certs:/certs:ro
+volumes:
+  dumpling-data:
+```
+
+```sh
+docker compose up -d                      # http://127.0.0.1:9898
+```
+
+The container runs as uid 10001: host directories mounted for backups (and the SQL Server share)
+must be writable by it, e.g. `sudo chown 10001 /srv/backups`. The image is `linux/amd64` only.
 
 ### Try it with Docker Compose (test databases included)
 

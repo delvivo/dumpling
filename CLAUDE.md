@@ -26,6 +26,8 @@ docker compose -f testdata/compose.yaml down
 
 On Git Bash, `docker run -v` paths need `MSYS_NO_PATHCONV=1`.
 
+README screenshots live in `docs/screenshots/` (1360px wide, light theme), captured from the compose stack seeded with demo connections/plans/backups; retake them when a page's layout changes.
+
 Release: `.github/workflows/release.yml` — on `v*` tag push builds UI, vet/test `-short`, cross-compiles (`CGO_ENABLED=0`, `-X main.version=<tag>`) linux/darwin/windows × amd64/arm64 into tar.gz/zip + `SHA256SUMS`, then `gh release create`. `workflow_dispatch` only uploads the `dist` artifact.
 
 ## Architecture
