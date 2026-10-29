@@ -1,0 +1,139 @@
+import { useEffect, useState } from "react";
+import { del, get, post, put, when } from "../api";
+import type { Connection, Engine } from "../types";
+import { Confirm } from "../Modal";
+
+const defaults: Record<Engine, { port: number; username: string }> = {
+  postgres: { port: 5432, username: "postgres" },
+  mysql: { port: 3306, username: "root" },
+  mssql: { port: 1433, username: "sa" },
+};
+
+const tlsModes: Record<Engine, [string, string][]> = {
+  postgres: [["", "prefer (default)"], ["disable", "disable"], ["require", "require"], ["verify-full", "verify-full"]],
+  mysql: [["", "preferred (default)"], ["DISABLED", "disabled"], ["REQUIRED", "required"], ["VERIFY_IDENTITY", "verify identity"]],
+  mssql: [["", "encrypt (default)"], ["trust", "encrypt, trust server certificate"], ["disable", "disable"]],
+};
+
+const empty = (): Connection => ({
+  id: "", name: "", engine: "postgres", host: "", port: 5432, username: "postgres", password: "",
+  tls_mode: "", share_path_server: "", share_path_local: "", server_version: "", tested_at: "",
+});
+
+type TestResult = { ok: boolean; server_version?: string; databases: string[]; warnings: string[]; error?: string };
+
+export default function Connections() {
+  const [list, setList] = useState<Connection[]>([]);
+  const [edit, setEdit] = useState<Connection | null>(null);
+  const [error, setError] = useState("");
+  const [test, setTest] = useState<TestResult | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = () => get<Connection[]>("/connections").then(setList).catch((e) => setError(e.message));
+  useEffect(() => { load(); }, []);
+
+  const set = (patch: Partial<Connection>) => setEdit((c) => ({ ...c!, ...patch }));
+  const changeEngine = (engine: Engine) => set({ engine, ...defaults[engine], tls_mode: "" });
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(""); setSaving(true);
+    try {
+      if (edit!.id) await put(`/connections/${edit!.id}`, edit);
+      else await post("/connections", edit);
+      setEdit(null);
+      setTest(null);
+      load();
+    } catch (err: any) {
+      setError(err.message);
+    } finally { setSaving(false); }
+  };
+
+  const runTest = async () => {
+    setTesting(true);
+    setTest(null);
+    try {
+      setTest(await post<TestResult>("/connections/test", edit));
+      load();
+    } catch (err: any) {
+      setTest({ ok: false, error: err.message, databases: [], warnings: [] });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const [deleting, setDeleting] = useState<Connection | null>(null);
+  const remove = async (c: Connection) => {
+    try { await del(`/connections/${c.id}`); load(); } catch (err: any) { setError(err.message); }
+  };
+
+  return (
+    <>
+      <h1>Connections <button className="primary" onClick={() => { setEdit(empty()); setTest(null); }}>Add connection</button></h1>
+      {deleting && <Confirm title={`Delete connection ${deleting.name}?`} confirmLabel="Delete connection" onConfirm={() => remove(deleting)} onClose={() => setDeleting(null)}>Existing backups stay restorable to other targets.</Confirm>}
+      {error && <p className="error" role="alert">{error}</p>}
+      {edit && (
+        <form onSubmit={save} style={{ marginBottom: "1.5rem" }}>
+          <div className="row">
+            <label>Name<input value={edit.name} onChange={(e) => set({ name: e.target.value })} required maxLength={64} /></label>
+            <label>Engine
+              <select value={edit.engine} onChange={(e) => changeEngine(e.target.value as Engine)}>
+                <option value="postgres">PostgreSQL</option>
+                <option value="mysql">MySQL</option>
+                <option value="mssql">SQL Server</option>
+              </select>
+            </label>
+            <label>Host<input value={edit.host} onChange={(e) => set({ host: e.target.value })} required /></label>
+            <label>Port<input type="number" min={1} max={65535} value={edit.port} onChange={(e) => set({ port: Number(e.target.value) })} required /></label>
+          </div>
+          <div className="row">
+            <label>Username<input value={edit.username} onChange={(e) => set({ username: e.target.value })} required autoComplete="off" /></label>
+            <label>Password
+              <input type="password" value={edit.password ?? ""} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password"
+                placeholder={edit.password_set ? "leave empty to keep" : ""} />
+            </label>
+            <label>TLS
+              <select value={edit.tls_mode} onChange={(e) => set({ tls_mode: e.target.value })}>
+                {tlsModes[edit.engine].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </label>
+          </div>
+          {edit.engine === "mssql" && (
+            <div className="row">
+              <label>Share path as seen by SQL Server<input value={edit.share_path_server} onChange={(e) => set({ share_path_server: e.target.value })} placeholder="/var/opt/mssql/share or D:\share" required /></label>
+              <label>Same share as seen by Dumpling<input value={edit.share_path_local} onChange={(e) => set({ share_path_local: e.target.value })} placeholder="/mnt/mssql-share" required /></label>
+            </div>
+          )}
+          {test && (
+            <div className={test.ok ? "card" : "card error"}>
+              {test.ok ? <><span aria-hidden="true">✅</span> Connected — server {test.server_version}. Databases: {(test.databases ?? []).join(", ") || "none"}</> : <><span aria-hidden="true">❌</span> {test.error}</>}
+              {(test.warnings ?? []).map((w) => <div key={w} className="warn">{w}</div>)}
+            </div>
+          )}
+          <p className="sr-only" role="status">{test ? (test.ok ? "Connection test succeeded." : `Connection test failed: ${test.error}`) : ""}</p>
+          <div className="actions">
+            <button className="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+            <button type="button" onClick={runTest} disabled={testing}>{testing ? "Testing…" : "Test connection"}</button>
+            <button type="button" onClick={() => setEdit(null)}>Cancel</button>
+          </div>
+        </form>
+      )}
+      <table role="table">
+        <thead role="rowgroup"><tr role="row"><th role="columnheader">Name</th><th role="columnheader">Engine</th><th role="columnheader">Host</th><th role="columnheader">Version</th><th role="columnheader">Last test</th><th role="columnheader" aria-label="Actions" /></tr></thead>
+        <tbody role="rowgroup">
+          {list.map((c) => (
+            <tr role="row" key={c.id}>
+              <td role="cell" data-label="Name">{c.name}</td><td role="cell" data-label="Engine">{c.engine}</td><td role="cell" data-label="Host">{c.host}:{c.port}</td><td role="cell" data-label="Version">{c.server_version || "–"}</td><td role="cell" data-label="Last test">{when(c.tested_at)}</td>
+              <td role="cell" className="actions">
+                <button onClick={() => { setEdit({ ...c, password: "" }); setTest(null); }}>Edit</button>
+                <button className="subtle-danger" onClick={() => setDeleting(c)}>Delete</button>
+              </td>
+            </tr>
+          ))}
+          {!list.length && <tr role="row"><td role="cell" colSpan={6} className="muted">No connections yet.</td></tr>}
+        </tbody>
+      </table>
+    </>
+  );
+}

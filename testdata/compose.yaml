@@ -1,0 +1,128 @@
+# Test databases for integration tests and quickstart.md.
+# Linux hosts: `chmod 777 testdata/mssql-share` (SQL Server runs as uid 10001).
+x-pg: &pg
+  image: postgres:17
+  environment:
+    POSTGRES_PASSWORD: Dumpling-Test-1
+  healthcheck: { test: ["CMD", "pg_isready", "-U", "postgres"], interval: 2s, retries: 30 }
+x-mysql: &mysql
+  image: mysql:8.4
+  environment:
+    MYSQL_ROOT_PASSWORD: Dumpling-Test-1
+  healthcheck: { test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pDumpling-Test-1"], interval: 2s, retries: 60 }
+x-mssql: &mssql
+  image: mcr.microsoft.com/mssql/server:2022-latest
+  environment:
+    ACCEPT_EULA: "Y"
+    MSSQL_SA_PASSWORD: Dumpling-Test-1
+    MSSQL_PID: Developer
+  healthcheck:
+    test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "localhost", "-U", "sa", "-P", "Dumpling-Test-1", "-Q", "SELECT 1"]
+    interval: 3s
+    retries: 60
+  volumes:
+    - ./mssql-share:/var/opt/mssql/share
+
+services:
+  pg-a: { <<: *pg, ports: ["15432:5432"] }
+  pg-b: { <<: *pg, image: "postgres:16", ports: ["15433:5432"] }   # older server: covers pg_dump 17 → PG 16 restore
+  mysql-a: { <<: *mysql, ports: ["13306:3306"] }
+  mysql-b: { <<: *mysql, ports: ["13307:3306"] }
+  mssql-a: { <<: *mssql, ports: ["11433:1433"] }
+  mssql-b: { <<: *mssql, ports: ["11434:1433"] }
+
+  # Remote destinations. S3 (RustFS, S3-compatible; MinIO no longer publishes images): endpoint s3:9000,
+  # TLS off, path-style on, region us-east-1, bucket dumpling, keys minioadmin/minioadmin
+  # (from the host: 127.0.0.1:19000).
+  # SFTP: host sftp port 22 (host: 127.0.0.1:12222), user dumpling, password Dumpling-Test-1, dir /upload.
+  s3:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: minioadmin
+      RUSTFS_SECRET_KEY: minioadmin
+    ports: ["19000:9000"]
+  s3-init:
+    image: amazon/aws-cli:latest
+    depends_on: [s3]
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["sh", "-c", "until aws --endpoint-url http://s3:9000 s3 ls; do sleep 1; done; aws --endpoint-url http://s3:9000 s3 mb s3://dumpling || true"]
+  sftp:
+    image: atmoz/sftp:alpine
+    command: ["dumpling:Dumpling-Test-1:::upload"]
+    ports: ["12222:22"]
+
+  # Dumpling itself, on the same network as the test databases.
+  #   docker compose -f testdata/compose.yaml up -d --build --wait dumpling   → http://127.0.0.1:9898
+  # Values to enter in the UI (password for all: Dumpling-Test-1):
+  #   PostgreSQL  host pg-a / pg-b        port 5432  user postgres  TLS disable
+  #   MySQL       host mysql-a / mysql-b  port 3306  user root      TLS preferred
+  #   SQL Server  host mssql-a / mssql-b  port 1433  user sa        TLS "trust server certificate"
+  #               share as seen by SQL Server: /var/opt/mssql/share — as seen by Dumpling: /share
+  #   Destination path: /backups
+  dumpling:
+    build: { context: .. }
+    ports: ["127.0.0.1:9898:9898"]      # published on host loopback only
+    environment:
+      DUMPLING_BIND: 0.0.0.0:9898        # listen address inside the container (flag --bind)
+      DUMPLING_DATA_DIR: /data           # SQLite state, logs (flag --data-dir)
+      # Master key for secrets at rest: base64 of 32 bytes. TEST ONLY — this value is public.
+      # Omit it to have master.key generated in DUMPLING_DATA_DIR.
+      DUMPLING_MASTER_KEY: ZHVtcGxpbmctdGVzdC1rZXktTk9ULUEtU0VDUkVUISE=
+      TZ: Europe/Rome                    # time zone of plan schedules without CRON_TZ=
+      # HTTPS (also mount the files, e.g. ./certs:/certs:ro):
+      # DUMPLING_TLS_CERT: /certs/tls.crt
+      # DUMPLING_TLS_KEY: /certs/tls.key
+    volumes:
+      - dumpling-data:/data
+      - dumpling-backups:/backups
+      - ./mssql-share:/share
+    depends_on:
+      s3-init: { condition: service_completed_successfully }
+      sftp: { condition: service_started }
+      pg-a: { condition: service_healthy }
+      pg-b: { condition: service_healthy }
+      mysql-a: { condition: service_healthy }
+      mysql-b: { condition: service_healthy }
+      mssql-a: { condition: service_healthy }
+      mssql-b: { condition: service_healthy }
+
+  # Integration tests inside a container that has the client tools:
+  #   docker compose -f testdata/compose.yaml up -d --wait pg-a pg-b mysql-a mysql-b mssql-a mssql-b s3 sftp
+  #   docker compose -f testdata/compose.yaml run --rm it
+  it:
+    profiles: [it]
+    build: { context: .., target: it }
+    volumes:
+      - ..:/src
+      - ./mssql-share:/share
+      - go-cache:/root/.cache
+      - go-mod:/root/go
+    environment:
+      IT_PG_A: pg-a:5432
+      IT_PG_B: pg-b:5432
+      IT_MY_A: mysql-a:3306
+      IT_MY_B: mysql-b:3306
+      IT_MS_A: mssql-a:1433
+      IT_MS_B: mssql-b:1433
+      IT_MSSQL_SHARE_LOCAL: /share
+      DUMPLING_TEST_S3_ENDPOINT: s3:9000
+      DUMPLING_TEST_S3_BUCKET: dumpling
+      DUMPLING_TEST_S3_KEY: minioadmin
+      DUMPLING_TEST_S3_SECRET: minioadmin
+      DUMPLING_TEST_SFTP_ADDR: sftp:22
+      DUMPLING_TEST_SFTP_USER: dumpling
+      DUMPLING_TEST_SFTP_PASSWORD: Dumpling-Test-1
+      DUMPLING_TEST_SFTP_DIR: /upload
+    depends_on:
+      s3-init: { condition: service_completed_successfully }
+      sftp: { condition: service_started }
+    command: ["go", "test", "-tags", "integration", "-count=1", "-v", "./internal/runner/", "./internal/storage/"]
+
+volumes:
+  go-cache:
+  go-mod:
+  dumpling-data:
+  dumpling-backups:

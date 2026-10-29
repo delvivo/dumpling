@@ -1,0 +1,30 @@
+# Go
+/dumpling
+/dumpling.exe
+*.exe
+*.test
+*.out
+
+# App runtime
+/data/
+/backups/
+
+# Web
+web/node_modules/
+web/dist/ui/
+*.log
+.env*
+
+# Test fixtures
+testdata/mssql-share/*
+!testdata/mssql-share/.gitkeep
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
+
+.claude/settings.local.json
