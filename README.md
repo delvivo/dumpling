@@ -13,6 +13,29 @@ choice** (same or another instance of the same engine, optionally under a differ
 - Live operation log and filterable history
 - One binary (Go) that embeds the web UI (React); GPL-3.0
 
+![Backup history: engine, plan, destination, size, checksum and status of every backup](docs/screenshots/backups.png)
+
+## Screenshots
+
+**Restore** into any same-engine connection, under any name. Overwriting an existing database
+requires typing its name; a target server older than the backup source is flagged.
+
+![Restore dialog with overwrite confirmation and version warning](docs/screenshots/restore.png)
+
+**Plans**: cron schedules, retention, optional encryption (🔒), pause/resume and run now.
+
+![Plans list](docs/screenshots/plans.png)
+
+**Operations**: filterable history of backups, restores, verifies and prunes, each with its full log.
+
+![Operations history](docs/screenshots/operations.png)
+![Operation detail with live log](docs/screenshots/operation-log.png)
+
+**Connections** and **destinations** (local directory, S3-compatible bucket, SFTP).
+
+![Connections list](docs/screenshots/connections.png)
+![Destinations list](docs/screenshots/destinations.png)
+
 ## Install
 
 ### Docker (client tools included)
