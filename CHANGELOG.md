@@ -66,6 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Docker runtime image based on Ubuntu 26.10; PostgreSQL 17 and MySQL 8.4 clients come from packages
+  built for Ubuntu (MySQL from Oracle's 26.04 repository, pinned over Ubuntu's newer `mysql-client`).
+- Updated Go dependencies `klauspost/compress` to 1.20.3 and `golang.org/x/net` to 0.62.0.
 - A prune whose deletions partly fail now ends with status `warning` (was `failed`), also for local
   destinations; the backups that could not be deleted stay in history.
 
