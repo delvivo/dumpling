@@ -18,13 +18,16 @@ COPY --from=web /src/web/dist web/dist
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/dumpling ./cmd/dumpling
 
-FROM debian:bookworm-slim AS tools
+# ponytail: Oracle has no 26.10 (stonking) repo, so MySQL comes from 26.04 (resolute); the pin keeps
+# Ubuntu's newer mysql-client out. Switch to stonking when Oracle publishes it.
+FROM ubuntu:26.10 AS tools
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
  && install -d /usr/share/keyrings \
  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
- && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+ && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt stonking-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
  && curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2025 | gpg --dearmor -o /usr/share/keyrings/mysql.gpg \
- && echo "deb [signed-by=/usr/share/keyrings/mysql.gpg] http://repo.mysql.com/apt/debian bookworm mysql-8.4-lts" > /etc/apt/sources.list.d/mysql.list \
+ && echo "deb [signed-by=/usr/share/keyrings/mysql.gpg] http://repo.mysql.com/apt/ubuntu resolute mysql-8.4-lts" > /etc/apt/sources.list.d/mysql.list \
+ && printf 'Package: mysql-*\nPin: origin repo.mysql.com\nPin-Priority: 1001\n' > /etc/apt/preferences.d/mysql \
  && apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 mysql-client \
  && apt-get purge -y curl gnupg && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
